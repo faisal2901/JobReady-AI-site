@@ -2,7 +2,10 @@
 // POST /api/ai  body: { action, ...payload }
 // Actions: analyze | tailor | interview | salary | roadmap | motivation | coverletter
 
-const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+// Current Gemini models (June 2026). 1.5/2.0 series were retired by Google.
+// Override without code changes via Vercel env var GEMINI_MODELS (comma-separated).
+const MODELS = (process.env.GEMINI_MODELS || "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-flash-lite")
+  .split(",").map((m) => m.trim()).filter(Boolean);
 
 async function callGemini({ system, user, json = false, temperature = 0.4, maxTokens = 8192 }) {
   const key = process.env.GEMINI_API_KEY;
@@ -18,9 +21,9 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
     },
   };
 
-  let lastErr = null;
+  let lastErr = null, sawRateLimit = false;
   for (const model of MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 55000);
@@ -35,9 +38,14 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
         );
         clearTimeout(timer);
         if (r.status === 429 || r.status === 503) {
+          sawRateLimit = true;
           lastErr = new Error(`Model ${model} busy (${r.status})`);
-          await new Promise((s) => setTimeout(s, 1200));
+          await new Promise((s) => setTimeout(s, 2500 * (attempt + 1))); // 2.5s, 5s, 7.5s backoff
           continue;
+        }
+        if (r.status === 404) { // model retired/unknown — skip to next model immediately
+          lastErr = new Error(`Model ${model} not available (404)`);
+          break;
         }
         if (!r.ok) {
           const t = await r.text();
@@ -53,6 +61,7 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
       }
     }
   }
+  if (sawRateLimit) throw new Error("AI is briefly rate-limited (free tier). Please wait ~30 seconds and try again — your data is safe.");
   throw lastErr || new Error("All Gemini models failed");
 }
 
