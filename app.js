@@ -111,17 +111,32 @@ function toggleResumeEdit() { const t = $("resumeText"); t.style.display = t.sty
 function needResume() { if (resumeText.trim().length < 100) { toast("⚠️ Upload or paste your resume first (Analyzer tab)"); go("analyzer"); return true; } return false; }
 
 /* ── ANALYZER ── */
-async function runAnalyze() {
+function hashStr(s) { // FNV-1a — stable fingerprint of resume+JD text
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+async function runAnalyze(force) {
   if (needResume()) return;
+  const jd = $("analyzeJd").value.trim();
+  const cacheKey = "score_" + hashStr(resumeText.replace(/\s+/g, " ").trim() + "||" + jd.replace(/\s+/g, " ").trim());
+  const cached = store.get(cacheKey, null);
+  if (cached && !force) {
+    lastAnalysis = cached; store.set("analysis", cached);
+    renderAnalysis(cached, cacheKey);
+    toast("🔒 Same resume & JD — showing your locked score. Edit the text to re-score.");
+    return;
+  }
   busy("analyzeBtn", true);
   $("analyzeOut").innerHTML = loadBox("Running deep analysis… AI rubric + 8 structural checks + keyword match");
   try {
-    const { data } = await aiCall("analyze", { resume: resumeText, jd: $("analyzeJd").value.trim() || undefined });
-    lastAnalysis = data; store.set("analysis", data);
-    renderAnalysis(data);
+    const { data } = await aiCall("analyze", { resume: resumeText, jd: jd || undefined });
+    lastAnalysis = data; store.set("analysis", data); store.set(cacheKey, data);
+    renderAnalysis(data, cacheKey);
   } catch (e) { $("analyzeOut").innerHTML = `<div class="card" style="color:var(--bad)">❌ ${esc(e.message)}</div>`; }
   busy("analyzeBtn", false, "🔍 Analyze Resume & Get ATS Score");
 }
+function clearScoreCache(key) { localStorage.removeItem("jr_" + key); runAnalyze(true); }
 
 function gaugeSVG(score) {
   const col = score >= 75 ? "var(--good)" : score >= 50 ? "var(--warn)" : "var(--bad)";
@@ -133,7 +148,7 @@ function gaugeSVG(score) {
   </svg><div class="val"><b style="color:${col}">${score}</b><span>ATS SCORE</span></div></div>`;
 }
 
-function renderAnalysis(d) {
+function renderAnalysis(d, cacheKey) {
   const r = d.rubric || {};
   const rubricRows = [["Impact", r.impact], ["Clarity", r.clarity], ["Keywords", r.keywords], ["Formatting", r.formatting], ["Relevance", r.relevance]]
     .map(([k, v]) => `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${k}</span><b>${v ?? 0}</b></div><div class="bar"><i style="width:${v ?? 0}%"></i></div></div>`).join("");
@@ -146,7 +161,8 @@ function renderAnalysis(d) {
       <div class="gauge-wrap" style="margin-top:12px">${gaugeSVG(d.atsScore)}
         <div style="flex:1;min-width:200px">${rubricRows}</div></div>
       <p style="margin-top:12px;font-size:13.5px;color:var(--mut)">${esc(d.summary || "")}</p>
-      <div style="margin-top:8px"><span class="badge c">🎯 ${esc(d.roleGuess || "")}</span> <span class="badge v">${esc(d.experienceLevel || "")}</span></div>
+      <div style="margin-top:8px"><span class="badge c">🎯 ${esc(d.roleGuess || "")}</span> <span class="badge v">${esc(d.experienceLevel || "")}</span> <span class="badge g">🔒 score locked for this version</span></div>
+      ${cacheKey ? `<button class="btn sm ghost" style="margin-top:10px" onclick="clearScoreCache('${cacheKey}')">🔄 Force fresh re-analysis</button>` : ""}
     </div>
     <div class="card"><h3>🧱 ATS Structural Checks <span class="badge v" style="margin-left:6px">${d.structural?.score ?? 0}/100</span></h3>
       <div style="margin-top:8px">${checks}</div></div>
@@ -462,7 +478,7 @@ function renderDashboard() {
   const steps = [];
   if (!hasResume) steps.push(["📄 Upload your resume", "analyzer"]);
   else if (!lastAnalysis) steps.push(["🔍 Run your first ATS analysis", "analyzer"]);
-  else if (lastAnalysis.atsScore < 75) steps.push([`🛠️ Fix issues — ATS score is ${lastAnalysis.atsScore}, aim for 75+`, "analyzer"]);
+  else if (lastAnalysis.atsScore < 75) steps.push(["🛠️ Fix issues — ATS score is " + lastAnalysis.atsScore + ", aim for 75+", "analyzer"]);
   if (!tracker.length) steps.push(["💼 Find jobs posted in the last 24 hours", "jobs"]);
   if (tracker.length && !tracker.some((t) => t.status === "Interview")) steps.push(["🎙️ Practice with the Interview Coach", "interview"]);
   steps.push(["🗺️ Build your 6-month career roadmap", "roadmap"]);
