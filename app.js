@@ -148,17 +148,24 @@ function reloadStateFromStorage() {
   updateResumeBadge(); renderDashboard(); renderTracker();
 }
 
-function openLogin() {
-  $("loginModal").classList.add("show");
-  if (CONFIG.GOOGLE_CLIENT_ID && window.google?.accounts?.id) {
+let gisTried = 0;
+function mountGoogleBtn() {
+  if (!CONFIG.GOOGLE_CLIENT_ID) { $("gBtn").style.display = "none"; $("gFallback").style.display = "block"; return; }
+  if (window.google?.accounts?.id) {
     try {
       google.accounts.id.initialize({ client_id: CONFIG.GOOGLE_CLIENT_ID, callback: onGoogleCred });
+      $("gBtn").innerHTML = "";
+      $("gBtn").style.display = "flex";
       google.accounts.id.renderButton($("gBtn"), { theme: "filled_black", size: "large", shape: "pill", width: 280 });
-    } catch (_) { $("gFallback").style.display = "block"; }
-  } else {
-    $("gBtn").style.display = "none";
-    $("gFallback").style.display = "block";
+      return;
+    } catch (_) { /* fall through */ }
   }
+  if (gisTried++ < 5) return setTimeout(mountGoogleBtn, 700); // GIS script may still be loading
+  $("gBtn").style.display = "none"; $("gFallback").style.display = "block";
+}
+function openLogin() {
+  $("loginModal").classList.add("show");
+  mountGoogleBtn();
 }
 function closeLogin() { $("loginModal").classList.remove("show"); }
 function completeLogin(u) {
@@ -905,3 +912,43 @@ function renderDashboard() {
   renderDashboard();
   loadMotivation();
 })();
+
+/* ── Speech to text for Interview Mentor (Web Speech API) ── */
+let recog = null, micOn = false;
+function toggleMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast("🎤 Voice input works on Chrome and Edge. Please type your answer here.");
+  if (micOn) { try { recog.stop(); } catch (_) {} return; }
+  recog = new SR();
+  recog.lang = "en-IN";
+  recog.continuous = true;
+  recog.interimResults = true;
+  let finalTxt = $("ivInp").value ? $("ivInp").value + " " : "";
+  recog.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalTxt += t.trim() + " ";
+      else interim += t;
+    }
+    $("ivInp").value = (finalTxt + interim).replace(/\s+/g, " ").trimStart();
+  };
+  recog.onstart = () => { micOn = true; $("ivMic").classList.add("rec"); $("ivMic").textContent = "⏹"; toast("🎤 Listening… speak your answer, tap ⏹ when done"); };
+  recog.onend = () => { micOn = false; $("ivMic").classList.remove("rec"); $("ivMic").textContent = "🎤"; };
+  recog.onerror = (e) => {
+    micOn = false; $("ivMic").classList.remove("rec"); $("ivMic").textContent = "🎤";
+    toast(e.error === "not-allowed" ? "🎤 Please allow microphone access in your browser" : e.error === "no-speech" ? "🎤 Didn't catch that, try again closer to the mic" : "🎤 Mic error: " + e.error);
+  };
+  try { recog.start(); } catch (_) { toast("🎤 Couldn't start the mic, try again"); }
+}
+
+/* ── End chat with Juno ── */
+function endBotChat() {
+  botHistory = [];
+  $("botMsgs").innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "msg ai";
+  div.textContent = "That was a great chat! 👋 I've wrapped up this session. Whenever you need me again, just type below. All the best with your job hunt, you've got this! 🚀";
+  $("botMsgs").appendChild(div);
+  toast("✅ Chat with Juno ended");
+}
