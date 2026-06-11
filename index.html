@@ -187,6 +187,15 @@ label.fl{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin:
 .stat .sico{float:right;width:34px;height:34px;border-radius:10px;background:rgba(124,92,255,.13);display:grid;place-items:center}
 .stat .sico svg{width:18px;height:18px;stroke:var(--acc2);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
 
+/* ── 30-day streak challenge ── */
+.challenge{background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(124,92,255,.10));border:1px solid rgba(251,191,36,.3);overflow:hidden}
+.challenge h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ch-track{position:relative;height:12px;background:#1d1d38;border-radius:99px;margin:26px 6px 30px}
+.ch-track .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:linear-gradient(90deg,#f59e0b,#f472b6,#a855f7);transition:width 1s cubic-bezier(.2,.7,.3,1);box-shadow:0 0 14px rgba(251,191,36,.45)}
+.ch-ms{position:absolute;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#1a1a36;border:2px solid var(--border2);display:grid;place-items:center;font-size:12px;transition:.3s}
+.ch-ms.hit{background:var(--grad);border-color:transparent;box-shadow:0 0 12px rgba(124,92,255,.7);transform:translate(-50%,-50%) scale(1.12)}
+.ch-ms span{position:absolute;top:30px;font-size:10px;color:var(--dim);white-space:nowrap;left:50%;transform:translateX(-50%)}
+.ch-flame{font-size:34px;float:right;animation:bob 2.2s ease-in-out infinite}
 .quote-card{border-left:3px solid var(--acc);background:rgba(124,92,255,.07);border-radius:14px;padding:18px 20px;font-style:italic;color:#d8d4f0}
 .quote-card .tip{font-style:normal;font-size:13px;color:var(--mut);margin-top:10px}
 
@@ -357,6 +366,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
         <div class="stat"><span class="sico"><svg><use href="#i-mic"/></svg></span><b id="dInterviews">0</b><span>Interviews</span></div>
         <div class="stat"><span class="sico"><svg><use href="#i-flame"/></svg></span><b id="dStreak">1</b><span>Day Streak</span></div>
       </div>
+      <div class="card challenge" id="challengeCard" style="margin-bottom:18px"></div>
       <div class="grid g2">
         <div class="card">
           <h3>⚡ Today's Motivation</h3>

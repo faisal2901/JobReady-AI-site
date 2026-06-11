@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -181,6 +181,7 @@ function completeLogin(u) {
   const returning = restoreVault(u.email);
   store.set("user", u);
   if (returning) reloadStateFromStorage();
+  calcStreak();
   closeLogin(); renderAuth(); renderDashboard();
   const first = u.name.split(" ")[0];
   toast(returning
@@ -863,6 +864,7 @@ async function sendBot() {
 
 /* ── DASHBOARD / motivation / streak ── */
 function calcStreak() {
+  if (!user) return 0; // streaks belong to an account, anonymous visitors don't accrue
   const today = new Date().toISOString().slice(0, 10);
   const last = store.get("lastVisit", "");
   let streak = store.get("streak", 0);
@@ -870,6 +872,11 @@ function calcStreak() {
     const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
     streak = last === y ? streak + 1 : 1;
     store.set("streak", streak); store.set("lastVisit", today);
+    if ([7, 14, 21, 30].includes(streak)) {
+      setTimeout(() => toast(streak >= 30
+        ? "🏆 30 DAY STREAK COMPLETE! You've earned a free paid course. Claim it from your dashboard!"
+        : `🔥 ${streak} day streak! Milestone unlocked, keep the fire burning!`), 2200);
+    }
   }
   return streak;
 }
@@ -897,7 +904,8 @@ function renderDashboard() {
   $("dAts").textContent = lastAnalysis ? lastAnalysis.atsScore : "—";
   $("dApplied").textContent = tracker.filter((t) => ["Applied", "Interview", "Offer"].includes(t.status)).length;
   $("dInterviews").textContent = tracker.filter((t) => ["Interview", "Offer"].includes(t.status)).length;
-  $("dStreak").textContent = store.get("streak", 1);
+  $("dStreak").textContent = user ? store.get("streak", 1) : "—";
+  renderChallenge();
   const hasResume = resumeText.trim().length > 100;
   const steps = [];
   if (!hasResume) steps.push(["📄 Upload your resume", "analyzer"]);
@@ -910,6 +918,41 @@ function renderDashboard() {
   const h = new Date().getHours();
   const who = user ? ", " + user.name.split(" ")[0] : "";
   $("greet").textContent = (h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening") + who + "! 👋";
+}
+
+/* ── 30-Day Job Streak Challenge ── */
+const MILESTONES = [
+  { day: 7, icon: "⚡", label: "Momentum" },
+  { day: 14, icon: "🔥", label: "Halfway Hero" },
+  { day: 21, icon: "💪", label: "Unstoppable" },
+  { day: 30, icon: "🏆", label: "Champion" },
+];
+function renderChallenge() {
+  const el = $("challengeCard");
+  if (!el) return;
+  if (!user) {
+    el.innerHTML = `<h3>🏆 The 30-Day Job Streak Challenge</h3>
+      <p style="font-size:14px;color:var(--mut);margin-top:6px">Show up for your career 30 days in a row and win big: complete the streak and get <b style="color:var(--warn)">one paid course of your choice, absolutely free</b>. Sign in to start day 1 of your journey.</p>
+      <button class="btn gold sm" style="margin-top:12px" onclick="openLogin()">🚀 Sign in & start my streak</button>`;
+    return;
+  }
+  const streak = store.get("streak", 1);
+  const pct = Math.min(100, Math.round((streak / 30) * 100));
+  const done = streak >= 30;
+  const next = MILESTONES.find((m) => m.day > streak);
+  const claimMail = "mailto:faizalkhan1111222@gmail.com?subject=" + encodeURIComponent("🏆 30-Day Streak Completed! Free Course Claim") +
+    "&body=" + encodeURIComponent(`Hi JobReady AI team,\n\nI completed the 30-day streak challenge!\n\nMy name: ${user.name}\nMy email: ${user.email}\nCourse I would like: (tell us which paid course you want)\n\nAttaching my streak screenshot.\n\nThank you!`);
+  el.innerHTML = `
+    <span class="ch-flame">${done ? "🏆" : "🔥"}</span>
+    <h3>🏆 The 30-Day Job Streak Challenge <span class="badge y">Day ${Math.min(streak, 30)} of 30</span></h3>
+    <p style="font-size:13.5px;color:var(--mut);margin-top:4px">Visit every single day and work on your job hunt. Complete 30 days without breaking the chain and get <b style="color:var(--warn)">one paid course of your choice, free</b>. Miss a day and the streak resets, so guard it like your dream job depends on it!</p>
+    <div class="ch-track"><div class="fill" style="width:${pct}%"></div>
+      ${MILESTONES.map((m) => `<div class="ch-ms ${streak >= m.day ? "hit" : ""}" style="left:${(m.day / 30) * 100}%">${m.icon}<span>${m.label} · Day ${m.day}</span></div>`).join("")}
+    </div>
+    ${done
+      ? `<a class="btn gold" href="${claimMail}">🎁 Claim my free course now</a> <span style="font-size:12px;color:var(--dim);margin-left:8px">We'll reply with access to the course you pick.</span>`
+      : `<div style="font-size:13px;color:var(--acc2)">${next ? `${next.icon} Next milestone: <b>${next.label}</b> in ${next.day - streak} day${next.day - streak > 1 ? "s" : ""}` : ""} · ${30 - streak} day${30 - streak > 1 ? "s" : ""} to the free course 🎁</div>`}
+  `;
 }
 
 /* ── Init ── */
