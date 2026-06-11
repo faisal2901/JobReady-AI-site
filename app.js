@@ -1,12 +1,12 @@
-/* ═══════════════ JobReady AI — app.js (v2) ═══════════════ */
+/* ═══════════════ JobReady AI — app.js (v3) ═══════════════ */
 "use strict";
 
 /* ── CONFIG ── */
 const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
-  // Get one free: console.cloud.google.com → APIs & Services → Credentials → Create OAuth client ID (Web)
+  // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -24,20 +24,29 @@ let lastAnalysis = store.get("analysis", null);
 let tracker = store.get("tracker", []);
 let user = store.get("user", null);
 let ivHistory = [];
+let ivActive = false;
 let jobsCache = [];
 let botHistory = [];
 
-function hashStr(s) { // FNV-1a — stable fingerprint
+function hashStr(s) {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return (h >>> 0).toString(36);
 }
 
+/* ── Splash ── */
+(function splash() {
+  const sp = $("splash");
+  if (sessionStorage.getItem("jr_splashed")) { sp.classList.add("hide"); return; }
+  sessionStorage.setItem("jr_splashed", "1");
+  setTimeout(() => sp.classList.add("hide"), 1800);
+})();
+
 /* ── Toast ── */
 let toastT;
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3200);
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3400);
 }
 
 /* ── API helper with retry ── */
@@ -59,7 +68,7 @@ const aiCall = (action, payload, retries = 1) =>
 
 /* ── Fun rotating loaders & friendly errors ── */
 let loaderTimer = null;
-function loadBox(messages) {
+function loadBox(messages, subText) {
   clearInterval(loaderTimer);
   const msgs = Array.isArray(messages) ? messages : [messages];
   const lid = "lmsg" + Date.now();
@@ -71,20 +80,20 @@ function loadBox(messages) {
       i = (i + 1) % msgs.length;
       el.style.opacity = 0;
       setTimeout(() => { if ($(lid)) { $(lid).textContent = msgs[i]; $(lid).style.opacity = 1; } }, 350);
-    }, 2600);
+    }, 2800);
   }, 0);
   return `<div class="card"><div class="loadbox"><div class="spin"></div>
     <div class="lmsg" id="${lid}">${esc(msgs[0])}</div>
-    <div class="lsub">usually takes 10–20 seconds</div></div></div>`;
+    <div class="lsub">${esc(subText || "good things take 20 to 60 seconds, worth the wait ☕")}</div></div></div>`;
 }
 function errBox(e, retryJs) {
   clearInterval(loaderTimer);
   const m = String(e.message || e);
   const busy = /high demand|rate.?limit|busy|503|429|chai|hang tight/i.test(m);
-  const net = /failed to fetch|network|timed? ?out/i.test(m);
-  const title = busy ? "☕ Hang tight — high demand right now!" : net ? "📡 Connection hiccup" : "😅 Something went wrong";
+  const net = /failed to fetch|network|timed? ?out|504/i.test(m);
+  const title = busy ? "☕ Hang tight, high demand right now!" : net ? "📡 Connection hiccup" : "😅 Something went wrong";
   const sub = busy
-    ? "Lots of job seekers are using JobReady AI at this moment. Take a sip of chai and hit retry in ~30 seconds — your data is safe."
+    ? "Lots of job seekers are using JobReady AI at this moment. Take a sip of chai and hit retry in about 30 seconds. Your data is safe."
     : net
       ? "Your internet or our server blinked. One retry usually fixes it."
       : m;
@@ -94,7 +103,51 @@ function errBox(e, retryJs) {
 }
 function busyBtn(btn, on, label) { const b = $(btn); if (!b) return; b.disabled = on; b.innerHTML = on ? `<span class="spin"></span> Working…` : label; }
 
-/* ── AUTH (Google Sign-In + fallback) ── */
+/* ── Sidebar toggle (works on desktop and mobile) ── */
+function toggleSidebar() {
+  if (window.innerWidth <= 920) $("sidebar").classList.toggle("open");
+  else document.body.classList.toggle("scollapsed");
+}
+$("hamb").addEventListener("click", toggleSidebar);
+
+/* ── AUTH with per-user vaults ── */
+const DATA_KEYS_PREFIX = "jr_";
+function vaultKey(email) { return "jrvault_" + hashStr(email.toLowerCase().trim()); }
+function snapshotToVault(email) {
+  const snap = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(DATA_KEYS_PREFIX)) snap[k] = localStorage.getItem(k);
+  }
+  localStorage.setItem(vaultKey(email), JSON.stringify(snap));
+}
+function clearWorkspace() {
+  const toDel = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(DATA_KEYS_PREFIX)) toDel.push(k);
+  }
+  toDel.forEach((k) => localStorage.removeItem(k));
+}
+function restoreVault(email) {
+  const raw = localStorage.getItem(vaultKey(email));
+  if (!raw) return false;
+  try {
+    const snap = JSON.parse(raw);
+    Object.entries(snap).forEach(([k, v]) => localStorage.setItem(k, v));
+    return true;
+  } catch { return false; }
+}
+function reloadStateFromStorage() {
+  resumeText = store.get("resume", "");
+  resumeName = store.get("resumeName", "");
+  lastAnalysis = store.get("analysis", null);
+  tracker = store.get("tracker", []);
+  $("resumeText").value = resumeText || "";
+  $("analyzeOut").innerHTML = ""; $("tailorOut").innerHTML = ""; $("salaryOut").innerHTML = ""; $("roadmapOut").innerHTML = ""; $("jobsOut").innerHTML = "";
+  updateResumeBadge(); renderDashboard(); renderTracker();
+}
+
 function openLogin() {
   $("loginModal").classList.add("show");
   if (CONFIG.GOOGLE_CLIENT_ID && window.google?.accounts?.id) {
@@ -108,27 +161,43 @@ function openLogin() {
   }
 }
 function closeLogin() { $("loginModal").classList.remove("show"); }
+function completeLogin(u) {
+  user = u;
+  const returning = restoreVault(u.email);
+  store.set("user", u);
+  if (returning) reloadStateFromStorage();
+  closeLogin(); renderAuth(); renderDashboard();
+  const first = u.name.split(" ")[0];
+  toast(returning
+    ? `🎉 Welcome back to your JobReady journey, ${first}! Everything is right where you left it.`
+    : `🌟 Welcome aboard, ${first}! Let's get you job ready.`);
+}
 function onGoogleCred(resp) {
   try {
     const payload = JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    user = { name: payload.name || "User", email: payload.email || "", pic: payload.picture || "", via: "google" };
-    store.set("user", user);
-    closeLogin(); renderAuth(); renderDashboard();
-    toast("👋 Welcome, " + user.name.split(" ")[0] + "!");
-  } catch (_) { toast("Sign-in failed — try again"); }
+    completeLogin({ name: payload.name || "User", email: payload.email || "", pic: payload.picture || "", via: "google" });
+  } catch (_) { toast("Sign in failed, please try again"); }
 }
 function fallbackLogin() {
   const n = $("fName").value.trim(), e = $("fEmail").value.trim();
   if (!n || !/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(e)) return toast("⚠️ Enter your name and a valid email");
-  user = { name: n, email: e, pic: "", via: "email" };
-  store.set("user", user);
-  closeLogin(); renderAuth(); renderDashboard();
-  toast("👋 Welcome, " + n.split(" ")[0] + "!");
+  completeLogin({ name: n, email: e, pic: "", via: "email" });
 }
-function logout() { user = null; store.del("user"); renderAuth(); toast("Signed out"); }
+function openSignout() { $("soModal").classList.add("show"); }
+function closeSignout() { $("soModal").classList.remove("show"); }
+function confirmSignout() {
+  if (user?.email) snapshotToVault(user.email);
+  clearWorkspace();
+  user = null;
+  resumeText = ""; resumeName = ""; lastAnalysis = null; tracker = []; ivHistory = []; ivActive = false; jobsCache = [];
+  closeSignout();
+  reloadStateFromStorage();
+  renderAuth();
+  toast("👋 Signed out. Your data is locked safely on this device until you return.");
+}
 function renderAuth() {
   $("authArea").innerHTML = user
-    ? `<span class="userchip">${user.pic ? `<img src="${esc(user.pic)}" referrerpolicy="no-referrer">` : `<span class="av">${esc(user.name[0].toUpperCase())}</span>`}${esc(user.name.split(" ")[0])}<button onclick="logout()" title="Sign out">✕</button></span>`
+    ? `<span class="userchip">${user.pic ? `<img src="${esc(user.pic)}" referrerpolicy="no-referrer">` : `<span class="av">${esc(user.name[0].toUpperCase())}</span>`}${esc(user.name.split(" ")[0])}<button class="so" onclick="openSignout()">Sign out</button></span>`
     : `<button class="btn sm" onclick="openLogin()">Sign in</button>`;
 }
 function requireLogin() {
@@ -141,13 +210,13 @@ function requireLogin() {
 /* ── Navigation ── */
 const TITLES = {
   dashboard: ["Dashboard", "Your job search, supercharged."],
-  analyzer: ["Resume Analyzer & ATS Score", "Genuine, stable ATS scoring — AI rubric + deterministic checks."],
-  tailor: ["Tailor Resume for a JD", "Truthfully rewritten & keyword-optimized for any job description."],
-  jobs: ["Job Openings", "Fresh listings from LinkedIn, Naukri, Indeed, Glassdoor & more."],
+  analyzer: ["Resume Analyzer & ATS Score", "Genuine, stable ATS scoring. AI rubric plus deterministic checks."],
+  tailor: ["Tailor Resume for a JD", "Truthfully rewritten and keyword optimized for any job description."],
+  jobs: ["Job Openings", "Fresh listings from LinkedIn, Naukri, Indeed, Glassdoor and more."],
   tracker: ["Application Tracker", "Every application, from Saved to Offer."],
   interview: ["Interview Mentor", "Practice real rounds, calibrated to your resume."],
   salary: ["Salary Intelligence", "Realistic INR figures for the Indian market."],
-  roadmap: ["Career Roadmap", "A step-by-step plan from where you are to where you want to be."],
+  roadmap: ["Career Roadmap", "A step by step plan from where you are to where you want to be."],
 };
 function go(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
@@ -161,9 +230,8 @@ function go(view) {
   if (view === "dashboard") renderDashboard();
 }
 document.querySelectorAll(".nav a").forEach((a) => a.addEventListener("click", () => go(a.dataset.v)));
-$("hamb").addEventListener("click", () => $("sidebar").classList.toggle("open"));
 
-/* ── Resume upload & parsing (client-side) ── */
+/* ── Resume upload & parsing (client side) ── */
 const drop = $("drop"), fileInp = $("fileInp");
 drop.addEventListener("click", () => fileInp.click());
 drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
@@ -189,7 +257,7 @@ async function parseFile(file) {
       text = await file.text();
     }
     text = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-    if (text.length < 100) return toast("⚠️ Couldn't extract enough text — try pasting it instead.");
+    if (text.length < 100) return toast("⚠️ Couldn't extract enough text, try pasting it instead.");
     resumeText = text; resumeName = file.name;
     store.set("resume", text); store.set("resumeName", file.name);
     $("resumeText").value = text;
@@ -201,26 +269,31 @@ function updateResumeBadge() {
   const has = resumeText.trim().length > 100;
   $("resumeBadge").textContent = has ? "📄 " + (resumeName || "Resume loaded") : "📄 No resume yet";
   $("resumeBadge").className = has ? "badge g" : "badge v";
-  if (has && resumeName) { $("resumeInfo").style.display = "block"; $("resumeFileBadge").textContent = "✅ " + resumeName + " · " + resumeText.split(/\s+/).length + " words"; }
+  const info = $("resumeInfo");
+  if (has && resumeName) { info.style.display = "block"; $("resumeFileBadge").textContent = "✅ " + resumeName + " · " + resumeText.split(/\s+/).length + " words"; }
+  else info.style.display = "none";
 }
 function toggleResumeEdit() { const t = $("resumeText"); t.style.display = t.style.display === "none" ? "block" : "none"; }
 function needResume() { if (resumeText.trim().length < 100) { toast("⚠️ Upload or paste your resume first (Analyzer tab)"); go("analyzer"); return true; } return false; }
 
 /* ── ANALYZER ── */
+function scoreCacheKey(text, jd) {
+  return "score_" + hashStr(text.replace(/\s+/g, " ").trim() + "||" + (jd || "").replace(/\s+/g, " ").trim());
+}
 async function runAnalyze(force) {
   if (requireLogin() || needResume()) return;
   const jd = $("analyzeJd").value.trim();
-  const cacheKey = "score_" + hashStr(resumeText.replace(/\s+/g, " ").trim() + "||" + jd.replace(/\s+/g, " ").trim());
+  const cacheKey = scoreCacheKey(resumeText, jd);
   const cached = store.get(cacheKey, null);
   if (cached && !force) {
     lastAnalysis = cached; store.set("analysis", cached);
     renderAnalysis(cached, cacheKey);
-    toast("🔒 Same resume & JD — your locked score. Edit the text to re-score.");
+    toast("🔒 Same resume and JD, so here is your locked score. Edit the text to re-score.");
     return;
   }
   busyBtn("analyzeBtn", true);
   $("analyzeOut").innerHTML = loadBox([
-    "☕ Grab a chai — our AI is reading every single word…",
+    "☕ Grab a chai while our AI reads every single word…",
     "🔍 Running 8 structural ATS checks…",
     "🧮 Matching keywords like a strict recruiter…",
     "📊 Calculating your locked ATS score…",
@@ -252,8 +325,8 @@ function renderAnalysis(d, cacheKey) {
   const checks = (d.structural?.checks || []).map((c) => `<div style="font-size:13px;padding:4px 0">${c.pass ? "✅" : "❌"} ${esc(c.label)}</div>`).join("");
   const kw = d.keywordMatch;
   const boostBtn = d.atsScore < 90
-    ? `<button class="btn gold" style="margin-top:14px" onclick="runBoost()">🚀 Boost my score to 90+ (AI rewrite, 100% truthful)</button>`
-    : `<span class="badge g" style="margin-top:14px;display:inline-flex">🏆 Elite resume — you're in the top tier!</span>`;
+    ? `<button class="btn gold" style="margin-top:14px" onclick="runBoost()">🚀 Boost my score (AI rewrite, verified higher before you see it)</button>`
+    : `<span class="badge g" style="margin-top:14px;display:inline-flex">🏆 Elite resume, you're in the top tier!</span>`;
   $("analyzeOut").innerHTML = `
   <div class="grid g2" style="margin-bottom:16px">
     <div class="card"><h3>Your ATS Score</h3>
@@ -273,7 +346,7 @@ function renderAnalysis(d, cacheKey) {
     <div>${kw.missing.slice(0, 25).map((w) => `<span class="chip miss">${esc(w)}</span>`).join("")}</div></div>` : ""}
   <div class="grid g2" style="margin-bottom:16px">
     <div class="card"><h3>💪 Strengths</h3><ul style="margin:10px 0 0 18px;color:var(--mut);font-size:13.5px">${(d.strengths || []).map((s) => `<li style="margin-bottom:6px">${esc(s)}</li>`).join("")}</ul></div>
-    <div class="card"><h3>⚡ Quick Wins (10-min fixes)</h3><ul style="margin:10px 0 0 18px;color:var(--mut);font-size:13.5px">${(d.quickWins || []).map((s) => `<li style="margin-bottom:6px">${esc(s)}</li>`).join("")}</ul></div>
+    <div class="card"><h3>⚡ Quick Wins (10 minute fixes)</h3><ul style="margin:10px 0 0 18px;color:var(--mut);font-size:13.5px">${(d.quickWins || []).map((s) => `<li style="margin-bottom:6px">${esc(s)}</li>`).join("")}</ul></div>
   </div>
   <div class="card"><h3>🛠️ Issues & Fixes</h3><div style="margin-top:12px">
     ${(d.issues || []).map((i) => `<div class="issue"><span class="sev">${sev[i.severity] || "🔵"}</span><div><div>${esc(i.issue)}</div><div class="fix">→ ${esc(i.fix)}</div></div></div>`).join("")}
@@ -282,7 +355,7 @@ function renderAnalysis(d, cacheKey) {
   renderDashboard();
 }
 
-/* ── BOOST to 90+ ── */
+/* ── BOOST (verified higher score) ── */
 let lastBoosted = null;
 async function runBoost() {
   if (requireLogin() || needResume()) return;
@@ -290,17 +363,28 @@ async function runBoost() {
   out.innerHTML = loadBox([
     "🚀 Rewriting every bullet for maximum impact…",
     "✍️ Upgrading weak phrases into recruiter magnets…",
-    "🔑 Weaving in the keywords you genuinely own…",
-    "☕ Almost there — polishing your new resume…",
-  ]);
+    "🧪 Re-scoring the new version with the same strict audit…",
+    "🔁 Polishing again if the score isn't clearly higher…",
+    "☕ Almost there, verifying your improved score…",
+  ], "this one double checks itself, allow up to 90 seconds");
   try {
-    const { data } = await aiCall("boost", { resume: resumeText, jd: $("analyzeJd").value.trim() || undefined, analysis: lastAnalysis ? { issues: lastAnalysis.issues, quickWins: lastAnalysis.quickWins, missingKeywords: lastAnalysis.missingKeywords } : undefined });
+    const { data } = await aiCall("boost", {
+      resume: resumeText,
+      jd: $("analyzeJd").value.trim() || undefined,
+      originalScore: lastAnalysis?.atsScore,
+    }, 0);
     lastBoosted = data;
+    const oldS = lastAnalysis?.atsScore;
+    const newS = data.verifiedScore;
+    const up = oldS ? newS - oldS : null;
     out.innerHTML = `
     <div class="card" style="margin-bottom:16px;border-color:rgba(251,191,36,.4)">
-      <h3>🚀 Your Boosted Resume <span class="badge y" style="margin-left:6px">optimized for 90+</span></h3>
+      <h3>🚀 Your Boosted Resume
+        <span class="badge g" style="margin-left:6px">✅ Verified new score: ${newS}${oldS ? ` (was ${oldS}${up > 0 ? ", +" + up : ""})` : ""}</span>
+      </h3>
+      <p style="font-size:12.5px;color:var(--dim);margin-top:4px">We re-ran the exact same strict ATS audit on this version before showing it to you.</p>
       <div style="margin:12px 0;display:flex;gap:9px;flex-wrap:wrap">
-        <button class="btn good sm" onclick="useBoosted()">✅ Use this as my resume & re-score</button>
+        <button class="btn good sm" onclick="useBoosted()">✅ Use this as my resume</button>
         <button class="btn sm ghost" onclick="downloadDoc(lastBoosted.boostedResume,'Resume_Boosted','pdf')">⬇️ PDF</button>
         <button class="btn sm ghost" onclick="downloadDoc(lastBoosted.boostedResume,'Resume_Boosted','word')">⬇️ Word</button>
         <button class="btn sm ghost" onclick="navigator.clipboard.writeText(lastBoosted.boostedResume);toast('📋 Copied!')">📋 Copy</button>
@@ -316,12 +400,21 @@ async function runBoost() {
 function useBoosted() {
   if (!lastBoosted) return;
   resumeText = lastBoosted.boostedResume;
-  resumeName = (resumeName || "resume").replace(/\.(pdf|docx|txt)$/i, "") + " (boosted)";
+  resumeName = (resumeName || "resume").replace(/\.(pdf|docx|txt)$/i, "").replace(/ \(boosted\)$/, "") + " (boosted)";
   store.set("resume", resumeText); store.set("resumeName", resumeName);
   $("resumeText").value = resumeText;
   updateResumeBadge();
-  toast("✅ Boosted resume is now active — re-scoring…");
-  runAnalyze(true);
+  // Seed the score cache with the verified analysis so re-scoring shows the exact same number
+  if (lastBoosted.verifiedAnalysis) {
+    const jd = $("analyzeJd").value.trim();
+    const key = scoreCacheKey(resumeText, jd);
+    store.set(key, lastBoosted.verifiedAnalysis);
+    lastAnalysis = lastBoosted.verifiedAnalysis;
+    store.set("analysis", lastAnalysis);
+    renderAnalysis(lastAnalysis, key);
+  }
+  toast("✅ Boosted resume is now active, score " + (lastBoosted.verifiedScore || ""));
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 /* ── Professional document rendering (PDF / Word) ── */
@@ -337,7 +430,7 @@ function parseResumeLines(text) {
     if (!t) { out.push({ type: "blank" }); continue; }
     if (/^[A-Z][A-Z &/()'.-]{3,}$/.test(t) && t.length < 45) { out.push({ type: "head", text: t }); continue; }
     if (/^[•\-\*]\s*/.test(t)) { out.push({ type: "bullet", text: t.replace(/^[•\-\*]\s*/, "") }); continue; }
-    if (/—|\s\|\s/.test(t) && t.length < 110 && !/[.:]$/.test(t)) { out.push({ type: "sub", text: t }); continue; }
+    if (/\sat\s.*\||—|\s\|\s/.test(t) && t.length < 110 && !/[.:]$/.test(t)) { out.push({ type: "sub", text: t }); continue; }
     out.push({ type: "text", text: t });
   }
   return out;
@@ -423,14 +516,14 @@ async function runTailor() {
   $("tailorOut").innerHTML = loadBox([
     "✂️ Reading the JD like a hiring manager…",
     "🔑 Re-prioritizing your real wins for this role…",
-    "☕ Have a coffee — crafting a portal-ready resume…",
+    "☕ Have a coffee while we craft a portal ready resume…",
     "📄 Formatting clean sections recruiters love…",
   ]);
   try {
     const { data } = await aiCall("tailor", { resume: resumeText, jd, jobTitle: $("tJobTitle").value, company: $("tCompany").value });
     lastTailored = data;
     $("tailorOut").innerHTML = `
-    <div class="card" style="margin-bottom:16px"><h3>✅ Tailored Resume <span class="badge g" style="margin-left:6px">~${data.matchEstimate || "?"}% match</span> <span class="badge c">portal-ready format</span></h3>
+    <div class="card" style="margin-bottom:16px"><h3>✅ Tailored Resume <span class="badge g" style="margin-left:6px">~${data.matchEstimate || "?"}% match</span> <span class="badge c">portal ready format</span></h3>
       <div style="margin:12px 0;display:flex;gap:9px;flex-wrap:wrap">
         <button class="btn sm good" onclick="downloadDoc(lastTailored.tailoredResume,tailorBase(),'pdf')">⬇️ Download PDF</button>
         <button class="btn sm good" onclick="downloadDoc(lastTailored.tailoredResume,tailorBase(),'word')">⬇️ Download Word</button>
@@ -469,9 +562,9 @@ async function searchJobs(page) {
   if (page === 1) {
     $("jobsOut").innerHTML = loadBox([
       "🛰️ Scanning LinkedIn, Naukri, Indeed, Glassdoor…",
-      "☕ Sip your chai — fresh openings incoming…",
+      "☕ Sip your chai, fresh openings incoming…",
       "📍 Filtering for your city and timeline…",
-    ]);
+    ], "usually 5 to 15 seconds");
     jobsCache = [];
   }
   $("jobsMore").innerHTML = "";
@@ -483,7 +576,7 @@ async function searchJobs(page) {
     jobsCache = page === 1 ? j.jobs : jobsCache.concat(j.jobs);
     renderJobs();
     if (j.jobs.length >= 8) $("jobsMore").innerHTML = `<button class="btn ghost" onclick="searchJobs(${page + 1})">Load more ↓</button>`;
-    if (!j.jobs.length && page === 1) $("jobsOut").innerHTML = `<div class="card" style="text-align:center;color:var(--mut)">No fresh listings found — try "Last 3 days", a broader keyword, or leave city blank for all-India.</div>`;
+    if (!j.jobs.length && page === 1) $("jobsOut").innerHTML = `<div class="card" style="text-align:center;color:var(--mut)">No fresh listings found. Try "Last 3 days", a broader keyword, or leave city blank for all India.</div>`;
   } catch (e) { $("jobsOut").innerHTML = errBox(e, "searchJobs(1)"); }
   busyBtn("jobsBtn", false, "💼 Search Fresh Openings");
 }
@@ -499,7 +592,7 @@ function renderJobs() {
     <div style="flex:1;min-width:0">
       <h4>${esc(j.title)}</h4>
       <div class="meta">
-        <span>🏢 ${esc(j.company || "—")}</span><span>📍 ${esc(j.location || "—")}${j.remote ? " · 🏠 Remote" : ""}</span>
+        <span>🏢 ${esc(j.company || "?")}</span><span>📍 ${esc(j.location || "?")}${j.remote ? " · 🏠 Remote" : ""}</span>
         ${j.postedText ? `<span>🕐 ${esc(j.postedText)}</span>` : ""}${j.employmentType ? `<span>💼 ${esc(j.employmentType.toLowerCase())}</span>` : ""}
         ${fmtSalary(j) ? `<span style="color:var(--good)">💰 ${fmtSalary(j)}</span>` : ""}
         ${j.publisher ? `<span class="badge c" style="font-size:10px">${esc(j.publisher)}</span>` : ""}
@@ -523,10 +616,10 @@ function upsertTrack(j, status) {
   store.set("tracker", tracker);
 }
 function saveJob(i) { upsertTrack(jobsCache[i], "Saved"); toast("🔖 Saved to tracker"); }
-function autoTrack(i) { // clicking the link = Viewed (not Applied)
+function autoTrack(i) {
   const j = jobsCache[i];
   const ex = tracker.find((t) => t.id === j.id);
-  if (!ex || ex.status === "Saved") { upsertTrack(j, "Viewed"); toast("👀 Marked as Viewed — hit '✅ I applied' once you actually apply"); }
+  if (!ex || ex.status === "Saved") { upsertTrack(j, "Viewed"); toast("👀 Marked as Viewed. Hit '✅ I applied' once you actually apply."); }
 }
 function markApplied(i) { upsertTrack(jobsCache[i], "Applied"); toast("📨 Marked as Applied. All the best! 🍀"); renderDashboard(); }
 
@@ -551,7 +644,7 @@ function renderTracker() {
       <select onchange="setStatus('${esc(t.id)}',this.value)">${STATUSES.map((s) => `<option ${s === t.status ? "selected" : ""}>${s}</option>`).join("")}</select>
       <button class="btn sm ghost" onclick="delTrack('${esc(t.id)}')">🗑️</button>
     </div>`).join("")
-    : `<div class="card" style="text-align:center;color:var(--mut)">No applications tracked yet. Search jobs and hit <b>Apply</b> or <b>Save</b> — they'll appear here automatically.</div>`;
+    : `<div class="card" style="text-align:center;color:var(--mut)">No applications tracked yet. Search jobs and hit <b>Apply</b> or <b>Save</b>, they'll appear here automatically.</div>`;
   renderDashboard();
 }
 
@@ -562,45 +655,75 @@ function pushMsg(role, text) {
   div.textContent = text;
   $("ivMsgs").appendChild(div);
   $("ivMsgs").scrollTop = $("ivMsgs").scrollHeight;
+  return div;
+}
+function mentorStatus(text) {
+  const div = document.createElement("div");
+  div.className = "msg status";
+  div.innerHTML = esc(text) + '<span class="tdots"><i></i><i></i><i></i></span>';
+  $("ivMsgs").appendChild(div);
+  $("ivMsgs").scrollTop = $("ivMsgs").scrollHeight;
+  return div;
 }
 async function startInterview() {
   if (requireLogin()) return;
-  ivHistory = [];
+  ivHistory = []; ivActive = true;
   $("ivMsgs").innerHTML = "";
-  pushMsg("ai", "Setting up your session… 🎯");
-  await coachTurn();
+  $("ivEndBtn").style.display = "inline-flex";
+  $("ivStartBtn").style.display = "none";
+  await coachTurn("start");
 }
 async function sendInterview() {
   const txt = $("ivInp").value.trim();
   if (!txt) return;
-  if (!ivHistory.length) return toast("⚠️ Click Start New Session first");
+  if (!ivActive) return toast("⚠️ Click Start New Session first");
   $("ivInp").value = "";
   pushMsg("user", txt);
   ivHistory.push({ role: "user", text: txt });
-  await coachTurn();
+  await coachTurn("reply");
 }
-async function coachTurn() {
+async function endInterview() {
+  if (!ivActive) return;
+  ivActive = false;
+  $("ivEndBtn").style.display = "none";
+  $("ivStartBtn").style.display = "inline-flex";
+  await coachTurn("end");
+}
+async function coachTurn(kind) {
   $("ivSend").disabled = true;
-  const thinking = document.createElement("div");
-  thinking.className = "msg ai"; thinking.innerHTML = '<span class="spin"></span> Mentor is thinking…';
-  $("ivMsgs").appendChild(thinking);
+  const status = mentorStatus(
+    kind === "start" ? "🎙️ Your mentor is starting the interview"
+      : kind === "end" ? "🏁 Your mentor is preparing your final report"
+        : "💬 Your mentor is reviewing your answer"
+  );
   try {
-    const { data } = await aiCall("interview", { resume: resumeText || undefined, role: $("ivRole").value || undefined, mode: $("ivMode").value, history: ivHistory });
-    thinking.remove();
+    const { data } = await aiCall("interview", {
+      resume: resumeText || undefined,
+      role: $("ivRole").value || undefined,
+      mode: $("ivMode").value,
+      history: ivHistory,
+      end: kind === "end" || undefined,
+    });
+    status.remove();
     pushMsg("ai", data.reply);
     ivHistory.push({ role: "ai", text: data.reply });
-  } catch (e) { thinking.remove(); pushMsg("ai", "☕ High demand right now — give it ~30 seconds and send your answer again. Your session is safe."); }
+    if (kind === "end") pushMsg("ai", "🙌 Session complete. Start a new session anytime, I'll make it a little harder next round!");
+  } catch (e) {
+    status.remove();
+    pushMsg("ai", "☕ High demand right now. Give it about 30 seconds and try again, your session is safe.");
+    if (kind === "end") { ivActive = true; $("ivEndBtn").style.display = "inline-flex"; $("ivStartBtn").style.display = "none"; }
+  }
   $("ivSend").disabled = false;
 }
 
-/* ── SALARY (deterministic via cache) ── */
+/* ── SALARY (locked results) ── */
 async function runSalary(force) {
   if (requireLogin()) return;
   const role = $("sRole").value.trim();
   if (!role) return toast("⚠️ Enter a role");
   const key = "sal_" + hashStr([role, $("sCity").value, $("sYears").value, $("sSkills").value].join("|").toLowerCase().replace(/\s+/g, " "));
   const cached = store.get(key, null);
-  if (cached && !force) { renderSalary(role, cached, key); toast("🔒 Same inputs — your locked figures."); return; }
+  if (cached && !force) { renderSalary(role, cached, key); toast("🔒 Same inputs, so here are your locked figures."); return; }
   busyBtn("salaryBtn", true);
   $("salaryOut").innerHTML = loadBox([
     "💰 Crunching Indian market compensation data…",
@@ -619,7 +742,7 @@ function renderSalary(role, d, key) {
   const maxC = Math.max(...(d.byCity || []).map((c) => c.median), 1);
   $("salaryOut").innerHTML = `
   <div class="grid g2" style="margin-bottom:16px">
-    <div class="card"><h3>💰 ${esc(role)} — Expected CTC <span class="badge g" style="margin-left:6px">🔒 locked for these inputs</span></h3>
+    <div class="card"><h3>💰 ${esc(role)}: Expected CTC <span class="badge g" style="margin-left:6px">🔒 locked for these inputs</span></h3>
       <div style="display:flex;gap:18px;margin-top:16px;text-align:center">
         <div style="flex:1"><b style="font-size:22px;font-family:'Sora';color:var(--mut)">₹${d.low}L</b><div style="font-size:11.5px;color:var(--dim)">LOW</div></div>
         <div style="flex:1.2;background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.4);border-radius:14px;padding:8px"><b style="font-size:28px;font-family:'Sora';background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent">₹${d.median}L</b><div style="font-size:11.5px;color:var(--mut)">MEDIAN</div></div>
@@ -635,17 +758,17 @@ function renderSalary(role, d, key) {
       <div style="margin-top:12px;font-size:12.5px;color:var(--dim)">Top paying: ${(d.topPayingCompanies || []).map(esc).join(" · ")}</div></div>
     <div class="card"><h3>🤝 Negotiation tips (India)</h3><ul style="margin:10px 0 0 18px;color:var(--mut);font-size:13.5px">${(d.negotiationTips || []).map((t) => `<li style="margin-bottom:7px">${esc(t)}</li>`).join("")}</ul></div>
   </div>
-  <p style="margin-top:12px;font-size:12px;color:var(--dim)">AI-generated estimates based on Indian market patterns — verify on AmbitionBox/Glassdoor before negotiating.</p>`;
+  <p style="margin-top:12px;font-size:12px;color:var(--dim)">AI generated estimates based on Indian market patterns. Verify on AmbitionBox or Glassdoor before negotiating.</p>`;
 }
 
-/* ── ROADMAP (deterministic via cache, resume-based) ── */
+/* ── ROADMAP (locked, resume based) ── */
 async function runRoadmap(force) {
   if (requireLogin()) return;
   const target = $("rTarget").value.trim();
   if (!target) return toast("⚠️ Enter your target role");
   const key = "rm_" + hashStr([target, $("rCurrent").value, $("rTimeline").value, resumeText.slice(0, 4000)].join("|").toLowerCase().replace(/\s+/g, " "));
   const cached = store.get(key, null);
-  if (cached && !force) { renderRoadmap(cached, key); toast("🔒 Same inputs — your locked roadmap."); return; }
+  if (cached && !force) { renderRoadmap(cached, key); toast("🔒 Same inputs, so here is your locked roadmap."); return; }
   busyBtn("roadmapBtn", true);
   $("roadmapOut").innerHTML = loadBox([
     "🗺️ Reading your resume gap by gap…",
@@ -684,12 +807,20 @@ function renderRoadmap(d, key) {
   </div>`;
 }
 
-/* ── CHATBOT ── */
+/* ── JUNO CHATBOT ── */
 function toggleBot() { $("botPanel").classList.toggle("show"); }
 function botMsg(role, text) {
   const div = document.createElement("div");
   div.className = "msg " + (role === "user" ? "me" : "ai");
   div.textContent = text;
+  $("botMsgs").appendChild(div);
+  $("botMsgs").scrollTop = $("botMsgs").scrollHeight;
+  return div;
+}
+function junoTyping() {
+  const div = document.createElement("div");
+  div.className = "msg status";
+  div.innerHTML = 'Juno is typing<span class="tdots"><i></i><i></i><i></i></span>';
   $("botMsgs").appendChild(div);
   $("botMsgs").scrollTop = $("botMsgs").scrollHeight;
   return div;
@@ -701,13 +832,15 @@ async function sendBot() {
   $("botInp").value = "";
   botMsg("user", q);
   botHistory.push({ role: "user", text: q });
-  const thinking = botMsg("ai", "…");
+  const typing = junoTyping();
   try {
     const { data } = await aiCall("support", { question: q, history: botHistory.slice(-8) }, 1);
-    thinking.textContent = data.reply;
+    typing.remove();
+    botMsg("ai", data.reply);
     botHistory.push({ role: "ai", text: data.reply });
   } catch (e) {
-    thinking.textContent = "☕ I'm a bit busy right now — try again in a few seconds! Meanwhile: upload your resume in the Analyzer tab to get started, or email faizalkhan1111222@gmail.com for help.";
+    typing.remove();
+    botMsg("ai", "☕ I'm a bit busy right now, try again in a few seconds! Meanwhile: upload your resume in the Analyzer tab to get started, or email faizalkhan1111222@gmail.com for help.");
   }
   $("botMsgs").scrollTop = $("botMsgs").scrollHeight;
 }
@@ -725,9 +858,9 @@ function calcStreak() {
   return streak;
 }
 const FALLBACK_QUOTES = [
-  { quote: "Don't watch the clock; do what it does — keep going.", tip: "Apply to 3 fresh roles today before lunch.", author: "JobReady AI" },
-  { quote: "Rejection is redirection. Every 'no' is data, not defeat.", tip: "Re-read one rejected JD and update one resume bullet to match it.", author: "JobReady AI" },
-  { quote: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action. — APJ Abdul Kalam", tip: "Practice one interview answer out loud today.", author: "JobReady AI" },
+  { quote: "Don't watch the clock; do what it does. Keep going.", tip: "Apply to 3 fresh roles today before lunch.", author: "JobReady AI" },
+  { quote: "Rejection is redirection. Every no is data, not defeat.", tip: "Re-read one rejected JD and update one resume bullet to match it.", author: "JobReady AI" },
+  { quote: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action. (APJ Abdul Kalam)", tip: "Practice one interview answer out loud today.", author: "JobReady AI" },
 ];
 async function loadMotivation() {
   const today = new Date().toISOString().slice(0, 10);
@@ -753,7 +886,7 @@ function renderDashboard() {
   const steps = [];
   if (!hasResume) steps.push(["📄 Upload your resume", "analyzer"]);
   else if (!lastAnalysis) steps.push(["🔍 Run your first ATS analysis", "analyzer"]);
-  else if (lastAnalysis.atsScore < 90) steps.push(["🚀 Boost your ATS score to 90+ (currently " + lastAnalysis.atsScore + ")", "analyzer"]);
+  else if (lastAnalysis.atsScore < 90) steps.push(["🚀 Boost your ATS score (currently " + lastAnalysis.atsScore + ")", "analyzer"]);
   if (!tracker.length) steps.push(["💼 Find jobs posted in the last 24 hours", "jobs"]);
   if (tracker.length && !tracker.some((t) => t.status === "Interview")) steps.push(["🎙️ Practice with your Interview Mentor", "interview"]);
   steps.push(["🗺️ Build your career roadmap", "roadmap"]);

@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/ai.js": { "maxDuration": 60 },
+    "api/ai.js": { "maxDuration": 90 },
     "api/jobs.js": { "maxDuration": 30 }
   },
   "headers": [
