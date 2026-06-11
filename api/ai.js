@@ -10,9 +10,16 @@ const STYLE = `Writing style rule: never use em dashes or hyphens to join senten
 // Hard time budget per AI call: fail fast and friendly instead of hanging for 70+ seconds.
 const CALL_BUDGET_MS = 38000;
 
+function geminiKeys() {
+  const list = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY2, process.env.GEMINI_API_KEY3]
+    .concat((process.env.GEMINI_API_KEYS || "").split(","))
+    .map((k) => (k || "").trim()).filter(Boolean);
+  return [...new Set(list)];
+}
+
 async function callGemini({ system, user, json = false, temperature = 0.4, maxTokens = 8192 }) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is not set. Add it in Vercel, Settings, Environment Variables.");
+  const KEYS = geminiKeys();
+  if (!KEYS.length) throw new Error("GEMINI_API_KEY is not set. Add it in Vercel, Settings, Environment Variables.");
 
   const body = {
     system_instruction: { parts: [{ text: system + "\n" + STYLE }] },
@@ -26,11 +33,12 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
 
   const deadline = Date.now() + CALL_BUDGET_MS;
   let lastErr = null, sawRateLimit = false;
+  // Try every model x key combination: each model has its own rate bucket,
+  // and each API key (from a separate Google Cloud project) has its own free quota.
+  outer:
   for (const model of MODELS) {
-    // On 429 we retry the SAME model once after a short pause, then move on:
-    // each Gemini model has its own rate-limit bucket, so switching is faster than waiting.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (Date.now() > deadline) { sawRateLimit = true; break; }
+    for (const key of KEYS) {
+      if (Date.now() > deadline) { sawRateLimit = true; break outer; }
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), Math.min(30000, deadline - Date.now()));
@@ -42,14 +50,13 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
         if (r.status === 429 || r.status === 503) {
           sawRateLimit = true;
           lastErr = new Error(`Model ${model} busy (${r.status})`);
-          if (attempt === 0) await new Promise((s) => setTimeout(s, 1500));
-          continue; // second 429 on same model: inner loop ends, next model
+          continue; // next key for this model, then next model
         }
-        if (r.status === 404) { lastErr = new Error(`Model ${model} not available`); break; }
+        if (r.status === 404) { lastErr = new Error(`Model ${model} not available`); continue; }
         if (!r.ok) {
           const t = await r.text();
           lastErr = new Error(`Gemini ${model} error ${r.status}: ${t.slice(0, 300)}`);
-          break;
+          continue;
         }
         const data = await r.json();
         const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
@@ -57,7 +64,6 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
         return text;
       } catch (e) { lastErr = e; }
     }
-    if (Date.now() > deadline) break;
   }
   if (sawRateLimit) throw new Error("HIGH_DEMAND");
   throw lastErr || new Error("All Gemini models failed");
@@ -357,6 +363,52 @@ APP KNOWLEDGE:
 
 const ACTIONS = { analyze, boost, tailor, coverletter, interview, salary, roadmap, motivation, support };
 
+/* ---------- Server-side response cache ----------
+   Identical deterministic requests (same resume + same inputs) are answered from cache
+   WITHOUT touching Gemini. Saves free-tier quota massively and makes repeats instant.
+   Uses Upstash Redis when configured, plus an in-memory LRU per warm instance. */
+const CACHEABLE = { analyze: 14 * 86400, salary: 7 * 86400, roadmap: 14 * 86400 }; // TTL seconds
+function srvHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+function respCacheKey(action, body) {
+  const sig = {
+    analyze: [body.resume, body.jd],
+    salary: [body.role, body.city, body.years, body.skills],
+    roadmap: [body.resume, body.currentRole, body.targetRole, body.timeline],
+  }[action].map((x) => String(x || "").toLowerCase().replace(/\s+/g, " ").trim()).join("||");
+  return `jrc:${action}:${srvHash(sig)}`;
+}
+const memCache = new Map(); // key -> { v, exp }
+function memGet(k) { const e = memCache.get(k); if (e && e.exp > Date.now()) return e.v; memCache.delete(k); return null; }
+function memSet(k, v, ttlS) { if (memCache.size > 200) memCache.delete(memCache.keys().next().value); memCache.set(k, { v, exp: Date.now() + ttlS * 1000 }); }
+const hasUpstash = () => process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN;
+async function respCacheGet(k) {
+  const m = memGet(k);
+  if (m) return m;
+  if (hasUpstash()) {
+    try {
+      const raw = await upstash(`get/${k}`);
+      if (raw) { const v = JSON.parse(raw); memSet(k, v, 3600); return v; }
+    } catch (_) {}
+  }
+  return null;
+}
+async function respCacheSet(k, v, ttlS) {
+  memSet(k, v, ttlS);
+  if (hasUpstash()) {
+    try {
+      await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/setex/${k}/${ttlS}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}` },
+        body: JSON.stringify(v),
+      });
+    } catch (_) {}
+  }
+}
+
 /* ---------- CORS: same origin + explicitly allowed origins only ---------- */
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
@@ -429,6 +481,12 @@ module.exports = async (req, res) => {
     if (["analyze", "tailor", "boost"].includes(body.action) && !body.resume) {
       return res.status(400).json({ error: "Resume text is required" });
     }
+    // Served-from-cache responses are free: no quota, no Gemini call
+    if (CACHEABLE[body.action]) {
+      const ck = respCacheKey(body.action, body);
+      const hit = await respCacheGet(ck);
+      if (hit) return res.status(200).json({ ok: true, data: hit, cached: true });
+    }
     const limited = await checkQuota(ipOf(req), body.action);
     if (limited === "minute") {
       return res.status(429).json({ ok: false, error: "⏳ Easy there, champion! A short pause between AI requests keeps things fast for everyone. Try again in a minute." });
@@ -437,6 +495,9 @@ module.exports = async (req, res) => {
       return res.status(429).json({ ok: false, error: "🌙 You've used today's free AI credits. They refresh tomorrow, perfect time to apply to the jobs you've shortlisted!" });
     }
     const result = await fn(body);
+    if (CACHEABLE[body.action]) {
+      respCacheSet(respCacheKey(body.action, body), result, CACHEABLE[body.action]).catch(() => {});
+    }
     return res.status(200).json({ ok: true, data: result });
   } catch (e) {
     console.error(e);
