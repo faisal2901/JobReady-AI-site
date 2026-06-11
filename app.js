@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -919,6 +919,8 @@ let micWanted = false;   // user intent: keep listening until they tap stop
 let micFinal = "";       // accumulated final transcript
 let micHeard = false;    // did we receive ANY result event
 let micWatchdog = null;
+let micStartedAt = 0;    // when the current recognition session started
+let micDeadRestarts = 0; // sessions that died instantly without hearing anything
 
 function micUI(on) {
   const b = $("ivMic");
@@ -936,6 +938,7 @@ function buildRecognizer() {
 
   r.onresult = (e) => {
     micHeard = true;
+    micDeadRestarts = 0;
     clearTimeout(micWatchdog);
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -964,9 +967,20 @@ function buildRecognizer() {
 
   // Chrome stops recognition automatically every ~30 to 60 seconds of audio or after silence.
   // While the user still wants the mic on, transparently restart so dictation feels continuous.
+  // BUT: if sessions keep dying instantly without ever hearing anything, the speech service is
+  // blocked (Brave shields, privacy extensions, firewalls, some regions). Detect that and explain.
   r.onend = () => {
     if (micWanted) {
-      try { recog = buildRecognizer(); recog.start(); return; } catch (_) { /* fall through */ }
+      const lived = Date.now() - micStartedAt;
+      if (lived < 2500 && !micHeard) {
+        micDeadRestarts++;
+        if (micDeadRestarts >= 3) {
+          micWanted = false; micUI(false); clearTimeout(micWatchdog);
+          toast("🎤 Your browser is blocking Google's speech service, so no words can come through. Open this site in Google Chrome (with shields/adblock off for this site), or press Win + H to use Windows voice typing into the box.");
+          return;
+        }
+      }
+      try { micStartedAt = Date.now(); recog = buildRecognizer(); recog.start(); return; } catch (_) { /* fall through */ }
     }
     micUI(false);
     micWanted = false;
@@ -998,7 +1012,9 @@ async function toggleMic() {
 
   micFinal = $("ivInp").value ? $("ivInp").value.trim() + " " : "";
   micHeard = false;
+  micDeadRestarts = 0;
   micWanted = true;
+  micStartedAt = Date.now();
   recog = buildRecognizer();
   try { recog.start(); } catch (_) { micWanted = false; micUI(false); return toast("🎤 Couldn't start the mic, tap again."); }
   micUI(true);
@@ -1007,7 +1023,7 @@ async function toggleMic() {
   // Watchdog: if nothing was transcribed within 7 seconds, guide the user
   clearTimeout(micWatchdog);
   micWatchdog = setTimeout(() => {
-    if (micWanted && !micHeard) toast("🎤 I can't hear anything yet. Speak a bit louder and closer to the mic, and make sure the right microphone is selected in your system settings.");
+    if (micWanted && !micHeard) toast("🎤 I can't hear anything yet. Speak louder and closer, check the correct microphone is selected (browser lock icon → Site settings → Microphone). On Windows you can also press Win + H to dictate.");
   }, 7000);
 }
 
