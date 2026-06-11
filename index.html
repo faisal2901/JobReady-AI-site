@@ -305,7 +305,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
     <div class="brand">
       <svg class="blogo" viewBox="0 0 240 240"><use href="#jr-logo"/></svg>
       <div>JobReady AI<small>PREPARE · STAND OUT · GET HIRED</small></div>
-      <button class="sclose" onclick="toggleSidebar()" title="Close menu">✕</button>
+      <button class="sclose" onclick="toggleSidebar()" title="Close menu" aria-label="Close navigation menu">✕</button>
     </div>
     <nav class="nav" id="nav">
       <a data-v="dashboard" class="active"><svg class="nico"><use href="#i-home"/></svg>Dashboard</a>
@@ -330,7 +330,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   <!-- ───────── Main ───────── -->
   <main class="main">
     <div class="topbar">
-      <button class="hamb" id="hamb" title="Toggle menu">☰</button>
+      <button class="hamb" id="hamb" title="Toggle menu" aria-label="Toggle navigation menu">☰</button>
       <div style="flex:1">
         <h1 id="viewTitle">Dashboard</h1>
         <div class="sub" id="viewSub">Your job search, supercharged.</div>
@@ -461,7 +461,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
           </div>
           <div class="inp">
             <textarea id="ivInp" placeholder="Type your answer, or tap the mic and speak…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendInterview()}"></textarea>
-            <button class="btn ghost" id="ivMic" onclick="toggleMic()" title="Speak your answer">🎤</button>
+            <button class="btn ghost" id="ivMic" onclick="toggleMic()" title="Speak your answer" aria-label="Voice input, speak your answer">🎤</button>
             <button class="btn" id="ivSend" onclick="sendInterview()">Send</button>
           </div>
         </div>
@@ -501,10 +501,10 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
 <!-- ── Login modal ── -->
 <div class="modal-bg" id="loginModal">
   <div class="modal">
-    <button class="mx" onclick="closeLogin()">✕</button>
+    <button class="mx" onclick="closeLogin()" aria-label="Close sign in dialog">✕</button>
     <svg width="66" height="66" viewBox="0 0 240 240" style="filter:drop-shadow(0 6px 24px rgba(124,92,255,.5))"><use href="#jr-logo"/></svg>
     <h2>Sign in to JobReady AI</h2>
-    <p>Free forever. Sign in to analyze, tailor, practice and track. Your data stays safely in your browser.</p>
+    <p>Free daily AI credits for every user. Sign in to analyze, tailor, practice and track. Your data stays safely in your browser.</p>
     <div class="gbtnwrap" id="gBtn"></div>
     <div id="gFallback" style="display:none">
       <div class="mdivider">quick sign in</div>
@@ -519,7 +519,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
 <!-- ── Sign-out confirm modal ── -->
 <div class="modal-bg" id="soModal">
   <div class="modal">
-    <button class="mx" onclick="closeSignout()">✕</button>
+    <button class="mx" onclick="closeSignout()" aria-label="Close sign out dialog">✕</button>
     <div style="font-size:40px">👋</div>
     <h2>Sign out?</h2>
     <p>Your resume, scores and tracker will be locked safely on this device. Sign back in with the same email and everything will be restored exactly as you left it.</p>
@@ -537,7 +537,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
     <div class="bico">J</div>
     <div style="flex:1"><b>Juno</b><span>Your JobReady AI helper</span></div>
     <button class="botend" onclick="endBotChat()" title="End this chat">End chat</button>
-    <button class="mx" style="position:static" onclick="toggleBot()">✕</button>
+    <button class="mx" style="position:static" onclick="toggleBot()" aria-label="Close Juno chat">✕</button>
   </div>
   <div class="botmsgs" id="botMsgs">
     <div class="msg ai">Hi, I'm Juno! 👋 Ask me how anything works here: ATS scores, boosting, tailoring, job search, tracker, anything.</div>
@@ -549,7 +549,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   </div>
   <div class="botinp">
     <input type="text" id="botInp" placeholder="Ask Juno anything…" onkeydown="if(event.key==='Enter')sendBot()" />
-    <button class="btn sm" onclick="sendBot()">➤</button>
+    <button class="btn sm" onclick="sendBot()" aria-label="Send message to Juno">➤</button>
   </div>
 </div>
 

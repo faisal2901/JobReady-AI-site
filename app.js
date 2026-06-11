@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -49,16 +49,22 @@ function toast(msg) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3400);
 }
 
-/* ── API helper with retry ── */
-async function api(path, opts = {}, retries = 1) {
+/* ── API helper with retry + hard client timeout (UI never spins forever) ── */
+async function api(path, opts = {}, retries = 1, timeoutMs = 95000) {
   for (let i = 0; i <= retries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const r = await fetch(path, opts);
+      const r = await fetch(path, { ...opts, signal: ctrl.signal, headers: { ...(opts.headers || {}), "X-JR-App": "1" } });
+      clearTimeout(timer);
       const j = await r.json().catch(() => ({}));
+      if (r.status === 429) throw new Error(j.error || "Rate limited");
       if (!r.ok || j.ok === false) throw new Error(j.error || `Request failed (${r.status})`);
       return j;
     } catch (e) {
-      if (i === retries) throw e;
+      clearTimeout(timer);
+      if (e.name === "AbortError") throw new Error("The request took too long and was stopped. Please try again.");
+      if (i === retries || /free AI credits|pause between/i.test(e.message)) throw e;
       await new Promise((s) => setTimeout(s, 1800));
     }
   }
@@ -89,6 +95,8 @@ function loadBox(messages, subText) {
 function errBox(e, retryJs) {
   clearInterval(loaderTimer);
   const m = String(e.message || e);
+  const quota = /free AI credits|pause between/i.test(m);
+  if (quota) return `<div class="errcard"><div class="eico">🌙</div><div style="flex:1"><b>Free credit limit</b><p>${esc(m)}</p></div></div>`;
   const busy = /high demand|rate.?limit|busy|503|429|chai|hang tight/i.test(m);
   const net = /failed to fetch|network|timed? ?out|504/i.test(m);
   const title = busy ? "☕ Hang tight, high demand right now!" : net ? "📡 Connection hiccup" : "😅 Something went wrong";
@@ -616,10 +624,11 @@ function renderJobs() {
 }
 function toggleJD(i) { const el = $("jd-" + i); el.style.display = el.style.display === "none" ? "block" : "none"; }
 function tailorForJob(i) { const j = jobsCache[i]; prefillTailor(j.title, j.company, j.description); }
+function safeUrl(u) { try { const x = new URL(u); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : ""; } catch { return ""; } }
 function upsertTrack(j, status) {
   const ex = tracker.find((t) => t.id === j.id);
   if (ex) { ex.status = status; }
-  else tracker.unshift({ id: j.id, title: j.title, company: j.company, link: j.applyLink, status, date: new Date().toISOString().slice(0, 10) });
+  else tracker.unshift({ id: j.id, title: j.title, company: j.company, link: safeUrl(j.applyLink), status, date: new Date().toISOString().slice(0, 10) });
   store.set("tracker", tracker);
 }
 function saveJob(i) { upsertTrack(jobsCache[i], "Saved"); toast("🔖 Saved to tracker"); }
@@ -635,7 +644,7 @@ const STATUSES = ["Saved", "Viewed", "Applied", "Interview", "Offer", "Rejected"
 function addManual() {
   const t = $("mTitle").value.trim(), c = $("mCompany").value.trim();
   if (!t || !c) return toast("⚠️ Enter title and company");
-  tracker.unshift({ id: "m" + Date.now(), title: t, company: c, link: $("mLink").value.trim(), status: "Applied", date: new Date().toISOString().slice(0, 10) });
+  tracker.unshift({ id: "m" + Date.now(), title: t, company: c, link: safeUrl($("mLink").value.trim()), status: "Applied", date: new Date().toISOString().slice(0, 10) });
   store.set("tracker", tracker);
   $("mTitle").value = $("mCompany").value = $("mLink").value = "";
   renderTracker(); toast("✅ Added");
@@ -647,7 +656,7 @@ function renderTracker() {
   $("trackStats").innerHTML = STATUSES.map((s) => `<div class="ts"><b class="st-${s}">${counts[s]}</b><span>${s}</span></div>`).join("");
   $("trackList").innerHTML = tracker.length ? tracker.map((t) => `
     <div class="trow">
-      <div class="ti"><b>${esc(t.title)}</b><span>${esc(t.company)} · added ${esc(t.date)}${t.link ? ` · <a href="${esc(t.link)}" target="_blank" rel="noopener" style="color:var(--cyan)">link ↗</a>` : ""}</span></div>
+      <div class="ti"><b>${esc(t.title)}</b><span>${esc(t.company)} · added ${esc(t.date)}${safeUrl(t.link) ? ` · <a href="${esc(safeUrl(t.link))}" target="_blank" rel="noopener" style="color:var(--cyan)">link ↗</a>` : ""}</span></div>
       <select onchange="setStatus('${esc(t.id)}',this.value)">${STATUSES.map((s) => `<option ${s === t.status ? "selected" : ""}>${s}</option>`).join("")}</select>
       <button class="btn sm ghost" onclick="delTrack('${esc(t.id)}')">🗑️</button>
     </div>`).join("")

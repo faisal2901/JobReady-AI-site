@@ -7,6 +7,9 @@ const MODELS = (process.env.GEMINI_MODELS || "gemini-3.5-flash,gemini-2.5-flash,
 
 const STYLE = `Writing style rule: never use em dashes or hyphens to join sentence parts. Write natural flowing sentences with commas and periods instead.`;
 
+// Hard time budget per AI call: fail fast and friendly instead of hanging for 70+ seconds.
+const CALL_BUDGET_MS = 38000;
+
 async function callGemini({ system, user, json = false, temperature = 0.4, maxTokens = 8192 }) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set. Add it in Vercel, Settings, Environment Variables.");
@@ -21,12 +24,16 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
     },
   };
 
+  const deadline = Date.now() + CALL_BUDGET_MS;
   let lastErr = null, sawRateLimit = false;
   for (const model of MODELS) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // On 429 we retry the SAME model once after a short pause, then move on:
+    // each Gemini model has its own rate-limit bucket, so switching is faster than waiting.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (Date.now() > deadline) { sawRateLimit = true; break; }
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 50000);
+        const timer = setTimeout(() => ctrl.abort(), Math.min(30000, deadline - Date.now()));
         const r = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
           { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal }
@@ -35,8 +42,8 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
         if (r.status === 429 || r.status === 503) {
           sawRateLimit = true;
           lastErr = new Error(`Model ${model} busy (${r.status})`);
-          await new Promise((s) => setTimeout(s, 2000 * (attempt + 1)));
-          continue;
+          if (attempt === 0) await new Promise((s) => setTimeout(s, 1500));
+          continue; // second 429 on same model: inner loop ends, next model
         }
         if (r.status === 404) { lastErr = new Error(`Model ${model} not available`); break; }
         if (!r.ok) {
@@ -50,6 +57,7 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
         return text;
       } catch (e) { lastErr = e; }
     }
+    if (Date.now() > deadline) break;
   }
   if (sawRateLimit) throw new Error("HIGH_DEMAND");
   throw lastErr || new Error("All Gemini models failed");
@@ -69,10 +77,38 @@ async function geminiJSON(opts) {
   }
 }
 
-/* ---------- Deterministic ATS layer ---------- */
-const STOPWORDS = new Set(("a an the and or of to in for with on at by from as is are was were be been being this that these those it its we you your our their have has had do does did will would can could should may might must not no nor so if then than too very just about into over under again further once here there when where why how all any both each few more most other some such only own same s t don now").split(" "));
+/* ---------- Deterministic ATS layer (normalized + synonym aware) ---------- */
+const STOPWORDS = new Set(("a an the and or of to in for with on at by from as is are was were be been being this that these those it its we you your our their have has had do does did will would can could should may might must not no nor so if then than too very just about into over under again further once here there when where why how all any both each few more most other some such only own same s t don now " +
+  // generic JD filler that should never count as a "missing keyword"
+  "required requirement requirements experience experiences experienced year years skill skills strong good excellent ability abilities work working works team teams plus etc include includes including knowledge familiarity proficiency proficient understanding responsible responsibilities role roles job jobs candidate candidates must should preferred preferable qualification qualifications degree bachelor bachelors master masters btech mtech related field fields environment tool tools technology technologies using use used uses well will new day daily within across various multiple key core basic level levels equivalent minimum maximum description position company opportunity looking seeking join apply application salary location remote hybrid onsite full time part benefits per annum lpa ctc").split(/\s+/));
+
+// Map common variants to one canonical token so "Node.js" matches "nodejs", "JS" matches "JavaScript", etc.
+const SYNONYMS = {
+  js: "javascript", ts: "typescript", reactjs: "react", "react.js": "react", nodejs: "node", "node.js": "node",
+  nextjs: "next", "next.js": "next", vuejs: "vue", "vue.js": "vue", angularjs: "angular",
+  k8s: "kubernetes", postgres: "postgresql", "postgre": "postgresql", mongo: "mongodb",
+  ml: "machinelearning", "machine-learning": "machinelearning", ai: "artificialintelligence",
+  powerbi: "powerbi", "power-bi": "powerbi", "ms-excel": "excel", msexcel: "excel",
+  gcp: "googlecloud", aws: "aws", "ci/cd": "cicd", cicd: "cicd", "ci-cd": "cicd",
+  "html5": "html", "css3": "css", "restful": "rest", "apis": "api",
+};
+function normToken(w) {
+  w = w.toLowerCase().replace(/^[^a-z0-9+#]+|[^a-z0-9+#]+$/g, ""); // strip edge punctuation like "collaboration."
+  if (!w || !/[a-z]/.test(w)) return null;          // drop "2+", "10", pure symbols
+  if (/^\d+\+?$/.test(w)) return null;
+  w = w.replace(/'s$/, "");
+  if (SYNONYMS[w]) w = SYNONYMS[w];
+  else if (w.length > 4 && w.endsWith("s") && !w.endsWith("ss")) w = w.slice(0, -1); // light plural fold
+  if (STOPWORDS.has(w) || w.length < 2) return null;
+  return w;
+}
 function keywordSet(text) {
-  return new Set((text.toLowerCase().match(/[a-z0-9+#.]{2,}/g) || []).filter((w) => !STOPWORDS.has(w) && !/^\d+$/.test(w)));
+  const out = new Set();
+  for (const raw of text.toLowerCase().match(/[a-z0-9+#./-]{2,}/g) || []) {
+    const t = normToken(raw);
+    if (t) out.add(t);
+  }
+  return out;
 }
 function keywordMatch(resume, jd) {
   const r = keywordSet(resume), j = keywordSet(jd);
@@ -159,9 +195,11 @@ Return JSON:
 
 async function boost({ resume, jd, originalScore }) {
   const orig = Number(originalScore) || 0;
+  const t0 = Date.now();
   let best = null, current = resume, feedback = null;
 
   for (let pass = 0; pass < 2; pass++) {
+    if (pass > 0 && Date.now() - t0 > 45000) break; // keep total under the function limit
     const b = await boostOnce(current, jd, feedback);
     if (!b.boostedResume || b.boostedResume.length < 300) break;
     const a = await analyze({ resume: b.boostedResume, jd });
@@ -319,12 +357,70 @@ APP KNOWLEDGE:
 
 const ACTIONS = { analyze, boost, tailor, coverletter, interview, salary, roadmap, motivation, support };
 
-module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+/* ---------- CORS: same origin + explicitly allowed origins only ---------- */
+function applyCors(req, res) {
+  const origin = req.headers.origin || "";
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  if (req.method === "OPTIONS") return res.status(200).end();
+  res.setHeader("Vary", "Origin");
+  if (!origin) return true; // same-origin fetch or server-to-server
+  const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  let ok = allowed.includes(origin);
+  try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
+  if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
+  return ok;
+}
+
+/* ---------- Rate limiting & free daily credits ----------
+   Durable limits via Upstash Redis (free tier) when UPSTASH_REDIS_REST_URL/TOKEN are set.
+   Falls back to per-instance in-memory limits otherwise (best effort on serverless). */
+const COSTS = { boost: 4, tailor: 3, coverletter: 2, analyze: 2, roadmap: 2, salary: 1, interview: 1, motivation: 0, support: 1 };
+const MINUTE_MAX = Number(process.env.AI_PER_MINUTE) || 8;
+const DAILY_MAX = Number(process.env.AI_DAILY_CREDITS) || 80;
+const memMinute = new Map(), memDay = new Map();
+
+function ipOf(req) {
+  return ((req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket?.remoteAddress || "unknown";
+}
+async function upstash(cmd) {
+  const url = process.env.UPSTASH_REDIS_REST_URL, tok = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const r = await fetch(`${url}/${cmd}`, { headers: { Authorization: `Bearer ${tok}` } });
+  return (await r.json()).result;
+}
+async function checkQuota(ip, action) {
+  const cost = COSTS[action] ?? 1;
+  const day = new Date().toISOString().slice(0, 10);
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    try {
+      const mKey = `jrm:${ip}:${Math.floor(Date.now() / 60000)}`;
+      const m = await upstash(`incr/${mKey}`);
+      if (m === 1) await upstash(`expire/${mKey}/70`);
+      if (m > MINUTE_MAX) return "minute";
+      const dKey = `jrd:${ip}:${day}`;
+      const d = await upstash(`incrby/${dKey}/${cost}`);
+      if (d === cost) await upstash(`expire/${dKey}/90000`);
+      if (d > DAILY_MAX) return "day";
+      return null;
+    } catch (_) { /* fall through to memory */ }
+  }
+  const now = Date.now();
+  const recent = (memMinute.get(ip) || []).filter((t) => now - t < 60000);
+  recent.push(now); memMinute.set(ip, recent);
+  if (recent.length > MINUTE_MAX) return "minute";
+  const dk = ip + day;
+  const dn = (memDay.get(dk) || 0) + cost; memDay.set(dk, dn);
+  if (memDay.size > 5000) memDay.clear();
+  if (dn > DAILY_MAX) return "day";
+  return null;
+}
+
+module.exports = async (req, res) => {
+  const corsOk = applyCors(req, res);
+  if (req.method === "OPTIONS") return res.status(corsOk ? 200 : 403).end();
+  if (!corsOk) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+  // Lightweight app check: blocks naive scripted abuse of the endpoint
+  if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
@@ -332,6 +428,13 @@ module.exports = async (req, res) => {
     if (!fn) return res.status(400).json({ error: `Unknown action: ${body.action}` });
     if (["analyze", "tailor", "boost"].includes(body.action) && !body.resume) {
       return res.status(400).json({ error: "Resume text is required" });
+    }
+    const limited = await checkQuota(ipOf(req), body.action);
+    if (limited === "minute") {
+      return res.status(429).json({ ok: false, error: "⏳ Easy there, champion! A short pause between AI requests keeps things fast for everyone. Try again in a minute." });
+    }
+    if (limited === "day") {
+      return res.status(429).json({ ok: false, error: "🌙 You've used today's free AI credits. They refresh tomorrow, perfect time to apply to the jobs you've shortlisted!" });
     }
     const result = await fn(body);
     return res.status(200).json({ ok: true, data: result });

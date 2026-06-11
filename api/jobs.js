@@ -1,9 +1,25 @@
 // JobReady AI — live jobs endpoint (JSearch on RapidAPI: aggregates LinkedIn, Naukri, Indeed, Glassdoor, Shine…)
 // GET /api/jobs?q=react+developer&location=Bengaluru&datePosted=today&page=1&remote=false&employmentType=FULLTIME
 
+function applyCors(req, res) {
+  const origin = req.headers.origin || "";
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App");
+  res.setHeader("Vary", "Origin");
+  if (!origin) return true;
+  const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  let ok = allowed.includes(origin);
+  try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
+  if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
+  return ok;
+}
+
 module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  if (req.method === "OPTIONS") return res.status(200).end();
+  const corsOk = applyCors(req, res);
+  if (req.method === "OPTIONS") return res.status(corsOk ? 200 : 403).end();
+  if (!corsOk) return res.status(403).json({ ok: false, error: "Origin not allowed" });
+  if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
+  // Cache identical searches at Vercel's edge for 10 minutes: saves JSearch quota and is much faster
+  res.setHeader("Cache-Control", "public, s-maxage=600, stale-while-revalidate=1800");
 
   const key = process.env.RAPIDAPI_KEY;
   if (!key) {
