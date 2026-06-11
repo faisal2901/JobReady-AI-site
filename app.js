@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -727,7 +727,10 @@ async function coachTurn(kind) {
     if (kind === "end") pushMsg("ai", "🙌 Session complete. Start a new session anytime, I'll make it a little harder next round!");
   } catch (e) {
     status.remove();
-    pushMsg("ai", "☕ High demand right now. Give it about 30 seconds and try again, your session is safe.");
+    const m = String(e.message || "");
+    if (/free AI credits|pause between/i.test(m)) pushMsg("ai", m);
+    else if (/Forbidden|403/i.test(m)) pushMsg("ai", "🔄 Your app version looks outdated. Press Ctrl + Shift + R to refresh the page, then continue your session.");
+    else pushMsg("ai", "☕ High demand right now. Give it about 30 seconds and try again, your session is safe.");
     if (kind === "end") { ivActive = true; $("ivEndBtn").style.display = "inline-flex"; $("ivStartBtn").style.display = "none"; }
   }
   $("ivSend").disabled = false;
@@ -857,7 +860,10 @@ async function sendBot() {
     botHistory.push({ role: "ai", text: data.reply });
   } catch (e) {
     typing.remove();
-    botMsg("ai", "☕ I'm a bit busy right now, try again in a few seconds! Meanwhile: upload your resume in the Analyzer tab to get started, or email faizalkhan1111222@gmail.com for help.");
+    const m = String(e.message || "");
+    if (/free AI credits|pause between/i.test(m)) botMsg("ai", m);
+    else if (/Forbidden|403/i.test(m)) botMsg("ai", "🔄 Your app version looks outdated. Press Ctrl + Shift + R to refresh the page and I'll be right here!");
+    else botMsg("ai", "☕ I'm a bit busy right now, try again in a few seconds! Meanwhile: upload your resume in the Analyzer tab to get started, or email faizalkhan1111222@gmail.com for help.");
   }
   $("botMsgs").scrollTop = $("botMsgs").scrollHeight;
 }
