@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -913,33 +913,102 @@ function renderDashboard() {
   loadMotivation();
 })();
 
-/* ── Speech to text for Interview Mentor (Web Speech API) ── */
-let recog = null, micOn = false;
-function toggleMic() {
+/* ── Speech to text for Interview Mentor (robust live dictation) ── */
+let recog = null;
+let micWanted = false;   // user intent: keep listening until they tap stop
+let micFinal = "";       // accumulated final transcript
+let micHeard = false;    // did we receive ANY result event
+let micWatchdog = null;
+
+function micUI(on) {
+  const b = $("ivMic");
+  if (on) { b.classList.add("rec"); b.textContent = "⏹"; }
+  else { b.classList.remove("rec"); b.textContent = "🎤"; }
+}
+
+function buildRecognizer() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return toast("🎤 Voice input works on Chrome and Edge. Please type your answer here.");
-  if (micOn) { try { recog.stop(); } catch (_) {} return; }
-  recog = new SR();
-  recog.lang = "en-IN";
-  recog.continuous = true;
-  recog.interimResults = true;
-  let finalTxt = $("ivInp").value ? $("ivInp").value + " " : "";
-  recog.onresult = (e) => {
+  const r = new SR();
+  r.lang = "en-IN";
+  r.continuous = true;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+
+  r.onresult = (e) => {
+    micHeard = true;
+    clearTimeout(micWatchdog);
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) finalTxt += t.trim() + " ";
+      if (e.results[i].isFinal) micFinal += t.trim() + " ";
       else interim += t;
     }
-    $("ivInp").value = (finalTxt + interim).replace(/\s+/g, " ").trimStart();
+    const box = $("ivInp");
+    box.value = (micFinal + interim).replace(/\s+/g, " ").trimStart();
+    box.scrollTop = box.scrollHeight;
   };
-  recog.onstart = () => { micOn = true; $("ivMic").classList.add("rec"); $("ivMic").textContent = "⏹"; toast("🎤 Listening… speak your answer, tap ⏹ when done"); };
-  recog.onend = () => { micOn = false; $("ivMic").classList.remove("rec"); $("ivMic").textContent = "🎤"; };
-  recog.onerror = (e) => {
-    micOn = false; $("ivMic").classList.remove("rec"); $("ivMic").textContent = "🎤";
-    toast(e.error === "not-allowed" ? "🎤 Please allow microphone access in your browser" : e.error === "no-speech" ? "🎤 Didn't catch that, try again closer to the mic" : "🎤 Mic error: " + e.error);
+
+  r.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      micWanted = false; micUI(false);
+      toast("🎤 Microphone is blocked. Click the lock icon in the address bar, allow Microphone, then try again.");
+    } else if (e.error === "no-speech") {
+      // harmless: silence timeout. onend will fire and we auto-restart while micWanted.
+    } else if (e.error === "network") {
+      micWanted = false; micUI(false);
+      toast("🎤 Speech service unreachable. Voice typing needs Google Chrome with internet. Please type instead.");
+    } else if (e.error !== "aborted") {
+      toast("🎤 Mic issue: " + e.error + ". Try again.");
+    }
   };
-  try { recog.start(); } catch (_) { toast("🎤 Couldn't start the mic, try again"); }
+
+  // Chrome stops recognition automatically every ~30 to 60 seconds of audio or after silence.
+  // While the user still wants the mic on, transparently restart so dictation feels continuous.
+  r.onend = () => {
+    if (micWanted) {
+      try { recog = buildRecognizer(); recog.start(); return; } catch (_) { /* fall through */ }
+    }
+    micUI(false);
+    micWanted = false;
+  };
+  return r;
+}
+
+async function toggleMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast("🎤 Voice typing works on Google Chrome and Microsoft Edge. Please type your answer here.");
+
+  if (micWanted) { // user taps stop
+    micWanted = false;
+    try { recog && recog.stop(); } catch (_) {}
+    micUI(false);
+    toast("🎤 Stopped. Review your answer and hit Send.");
+    return;
+  }
+
+  // Ask for mic permission explicitly first, so we fail with a clear message instead of silence
+  try {
+    if (navigator.mediaDevices?.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop()); // we only needed the permission
+    }
+  } catch (err) {
+    return toast("🎤 Please allow microphone access (click the lock icon near the address bar → Microphone → Allow), then tap the mic again.");
+  }
+
+  micFinal = $("ivInp").value ? $("ivInp").value.trim() + " " : "";
+  micHeard = false;
+  micWanted = true;
+  recog = buildRecognizer();
+  try { recog.start(); } catch (_) { micWanted = false; micUI(false); return toast("🎤 Couldn't start the mic, tap again."); }
+  micUI(true);
+  toast("🎤 Listening… speak naturally, your words appear live. Tap ⏹ when done.");
+
+  // Watchdog: if nothing was transcribed within 7 seconds, guide the user
+  clearTimeout(micWatchdog);
+  micWatchdog = setTimeout(() => {
+    if (micWanted && !micHeard) toast("🎤 I can't hear anything yet. Speak a bit louder and closer to the mic, and make sure the right microphone is selected in your system settings.");
+  }, 7000);
 }
 
 /* ── End chat with Juno ── */
