@@ -190,11 +190,14 @@ label.fl{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin:
 /* ── 30-day streak challenge ── */
 .challenge{background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(124,92,255,.10));border:1px solid rgba(251,191,36,.3);overflow:hidden}
 .challenge h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ch-track{position:relative;height:12px;background:#1d1d38;border-radius:99px;margin:26px 6px 30px}
+.ch-track{position:relative;height:12px;background:#1d1d38;border-radius:99px;margin:26px 26px 46px}
 .ch-track .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:linear-gradient(90deg,#f59e0b,#f472b6,#a855f7);transition:width 1s cubic-bezier(.2,.7,.3,1);box-shadow:0 0 14px rgba(251,191,36,.45)}
 .ch-ms{position:absolute;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#1a1a36;border:2px solid var(--border2);display:grid;place-items:center;font-size:12px;transition:.3s}
 .ch-ms.hit{background:var(--grad);border-color:transparent;box-shadow:0 0 12px rgba(124,92,255,.7);transform:translate(-50%,-50%) scale(1.12)}
-.ch-ms span{position:absolute;top:30px;font-size:10px;color:var(--dim);white-space:nowrap;left:50%;transform:translateX(-50%)}
+.ch-ms span{position:absolute;top:32px;font-size:10px;color:var(--dim);white-space:nowrap;left:50%;transform:translateX(-50%);text-align:center}
+/* keep first & last milestone labels from overflowing the card edges */
+.ch-ms.edge-start span{left:0;transform:none;text-align:left}
+.ch-ms.edge-end span{left:auto;right:0;transform:none;text-align:right}
 .ch-flame{font-size:34px;float:right;animation:bob 2.2s ease-in-out infinite}
 .quote-card{border-left:3px solid var(--acc);background:rgba(124,92,255,.07);border-radius:14px;padding:18px 20px;font-style:italic;color:#d8d4f0}
 .quote-card .tip{font-style:normal;font-size:13px;color:var(--mut);margin-top:10px}
@@ -259,6 +262,23 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
 #ivMic.rec{background:linear-gradient(135deg,#dc2626,#f87171);border-color:transparent;animation:recpulse 1.1s infinite}
 @keyframes recpulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.55)}55%{box-shadow:0 0 0 9px rgba(248,113,113,0)}}
 
+/* ── First-time spotlight walkthrough ── */
+.tour-bg{position:fixed;inset:0;z-index:400;display:none}
+.tour-bg.show{display:block}
+/* four dim panels surround the highlighted element, leaving a clear "hole" */
+.tour-dim{position:fixed;background:rgba(5,5,12,.72);backdrop-filter:blur(1.5px);transition:all .3s cubic-bezier(.4,0,.2,1);z-index:400}
+.tour-ring{position:fixed;border:2px solid var(--acc2);border-radius:14px;box-shadow:0 0 0 3px rgba(124,92,255,.35),0 0 30px rgba(124,92,255,.55);transition:all .3s cubic-bezier(.4,0,.2,1);z-index:401;pointer-events:none}
+.tour-pop{position:fixed;z-index:402;width:min(312px,calc(100vw - 32px));background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:18px 20px;box-shadow:0 24px 70px rgba(0,0,0,.6);transition:all .3s cubic-bezier(.4,0,.2,1);animation:fade .3s}
+.tour-pop h4{font-size:15.5px;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.tour-pop p{font-size:13px;color:var(--mut);line-height:1.55}
+.tour-pop .tour-arrow{position:absolute;width:16px;height:16px;background:var(--bg2);border:1px solid var(--border2);transform:rotate(45deg)}
+.tour-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px}
+.tour-foot .tdots2{display:flex;gap:5px}
+.tour-foot .tdots2 i{width:6px;height:6px;border-radius:50%;background:var(--border2);transition:.2s}
+.tour-foot .tdots2 i.on{background:var(--acc2);transform:scale(1.25)}
+.tour-foot .tbtns{display:flex;gap:8px}
+.tour-skip{position:fixed;top:16px;right:18px;z-index:403;background:rgba(19,19,42,.9);border:1px solid var(--border2);color:var(--mut);border-radius:99px;padding:6px 15px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s}
+.tour-skip:hover{color:#fff;border-color:var(--acc)}
 @media(max-width:920px){
   .sidebar{transform:translateX(-100%)}
   .sidebar.open{transform:none;box-shadow:30px 0 80px rgba(0,0,0,.6)}
@@ -345,7 +365,8 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
         <div class="sub" id="viewSub">Your job search, supercharged.</div>
       </div>
       <div class="topright">
-        <span class="badge v" id="resumeBadge">📄 No resume yet</span>
+        <span class="badge v" id="resumeBadge" onclick="go('analyzer')" title="Upload or edit your resume" style="cursor:pointer">📄 No resume yet</span>
+        <button class="btn sm ghost" id="editResumeBtn" onclick="go('analyzer')" title="Upload or edit your resume">✏️ Edit resume</button>
         <span id="authArea"></span>
       </div>
     </div>
@@ -553,6 +574,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
     <div class="msg ai">Hi, I'm Juno! 👋 Ask me how anything works here: ATS scores, boosting, tailoring, job search, tracker, anything.</div>
   </div>
   <div class="botsugg">
+    <button onclick="toggleBot();startTour(true)">🧭 Show me around</button>
     <button onclick="askBot('How is my ATS score calculated?')">How is ATS scored?</button>
     <button onclick="askBot('Is my resume data safe?')">Is my data safe?</button>
     <button onclick="askBot('How does Boost to 90+ work?')">How does Boost work?</button>
@@ -560,6 +582,28 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   <div class="botinp">
     <input type="text" id="botInp" placeholder="Ask Juno anything…" onkeydown="if(event.key==='Enter')sendBot()" />
     <button class="btn sm" onclick="sendBot()" aria-label="Send message to Juno">➤</button>
+  </div>
+</div>
+
+<!-- ── First-time spotlight walkthrough ── -->
+<div class="tour-bg" id="tourBg">
+  <div class="tour-dim" id="tourDimTop"></div>
+  <div class="tour-dim" id="tourDimBottom"></div>
+  <div class="tour-dim" id="tourDimLeft"></div>
+  <div class="tour-dim" id="tourDimRight"></div>
+  <div class="tour-ring" id="tourRing"></div>
+  <button class="tour-skip" id="tourSkip" onclick="endTour(true)">Skip tour ✕</button>
+  <div class="tour-pop" id="tourPop">
+    <div class="tour-arrow" id="tourPopArrow"></div>
+    <h4 id="tourTitle"></h4>
+    <p id="tourBody"></p>
+    <div class="tour-foot">
+      <div class="tdots2" id="tourDots"></div>
+      <div class="tbtns">
+        <button class="btn sm ghost" id="tourBack" onclick="tourStep(-1)">Back</button>
+        <button class="btn sm" id="tourNext" onclick="tourStep(1)">Next →</button>
+      </div>
+    </div>
   </div>
 </div>
 
