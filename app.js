@@ -69,8 +69,23 @@ async function api(path, opts = {}, retries = 1, timeoutMs = 95000) {
     }
   }
 }
-const aiCall = (action, payload, retries = 1) =>
-  api("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) }, retries);
+const TRACKED_FEATURES = new Set(["analyze", "boost", "tailor", "coverletter", "interview", "salary", "roadmap"]);
+const aiCall = (action, payload, retries = 1) => {
+  if (TRACKED_FEATURES.has(action)) track("feature", { feature: action });
+  return api("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) }, retries);
+};
+
+/* ── Analytics: fire-and-forget event logging (never blocks or breaks the UI) ── */
+function track(event, extra = {}) {
+  try {
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-JR-App": "1" },
+      body: JSON.stringify({ event, ...extra }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (_) { /* analytics must never affect the user */ }
+}
 
 /* ── Fun rotating loaders & friendly errors ── */
 let loaderTimer = null;
@@ -181,6 +196,9 @@ function completeLogin(u) {
   const returning = restoreVault(u.email);
   store.set("user", u);
   if (returning) reloadStateFromStorage();
+  // Analytics: a brand-new email = signup, otherwise a login.
+  track(store.get("registered_" + hashStr(u.email.toLowerCase()), false) ? "login" : "signup", { email: u.email, name: u.name });
+  store.set("registered_" + hashStr(u.email.toLowerCase()), true);
   calcStreak();
   closeLogin(); renderAuth(); renderDashboard();
   const first = u.name.split(" ")[0];
@@ -230,7 +248,7 @@ function fallbackLogin() {
 function openSignout() { $("soModal").classList.add("show"); }
 function closeSignout() { $("soModal").classList.remove("show"); }
 function confirmSignout() {
-  if (user?.email) snapshotToVault(user.email);
+  if (user?.email) { track("logout", { email: user.email }); snapshotToVault(user.email); }
   clearWorkspace();
   user = null;
   resumeText = ""; resumeName = ""; lastAnalysis = null; tracker = []; ivHistory = []; ivActive = false; jobsCache = [];
@@ -602,6 +620,7 @@ async function searchJobs(page) {
   if (requireLogin()) return;
   const q = $("jQ").value.trim();
   if (!q) return toast("⚠️ Enter a role or keywords");
+  if (page === 1) track("feature", { feature: "jobs" });
   busyBtn("jobsBtn", true);
   if (page === 1) {
     $("jobsOut").innerHTML = loadBox([
@@ -1043,6 +1062,8 @@ function renderChallenge() {
   calcStreak();
   renderDashboard();
   loadMotivation();
+  // Analytics: count one page visit per session (avoids double-counting reloads).
+  if (!sessionStorage.getItem("jr_visited")) { sessionStorage.setItem("jr_visited", "1"); track("visit"); }
 })();
 
 /* ── First-time spotlight walkthrough ── */

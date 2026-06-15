@@ -3,7 +3,9 @@
     "api/ai.js": { "maxDuration": 90 },
     "api/jobs.js": { "maxDuration": 30 },
     "api/health.js": { "maxDuration": 60 },
-    "api/streak.js": { "maxDuration": 15 }
+    "api/streak.js": { "maxDuration": 15 },
+    "api/track.js": { "maxDuration": 10 },
+    "api/admin.js": { "maxDuration": 15 }
   },
   "headers": [
     {
