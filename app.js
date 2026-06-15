@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -187,6 +187,10 @@ function completeLogin(u) {
   toast(returning
     ? `🎉 Welcome back to your JobReady journey, ${first}! Everything is right where you left it.`
     : `🌟 Welcome aboard, ${first}! Let's get you job ready.`);
+  // First-time Google users get a mandatory one-time guided walkthrough.
+  if (!returning && u.via === "google" && !tourSeen()) {
+    setTimeout(() => startTour(false), 900);
+  }
 }
 function onGoogleCred(resp) {
   try {
@@ -869,22 +873,68 @@ async function sendBot() {
 }
 
 /* ── DASHBOARD / motivation / streak ── */
+// Local calendar date (YYYY-MM-DD) in the user's own timezone, so a new day
+// begins at 12:00 AM local time, not at UTC midnight.
+function localDay(d = new Date()) {
+  const t = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return t.toISOString().slice(0, 10);
+}
+function streakMilestoneToast(streak) {
+  if ([7, 14, 21, 30].includes(streak)) {
+    setTimeout(() => toast(streak >= 30
+      ? "🏆 30 DAY STREAK COMPLETE! You've earned a free paid course. Claim it from your dashboard!"
+      : `🔥 ${streak} day streak! Milestone unlocked, keep the fire burning!`), 2200);
+  }
+}
+// Advance the streak for "today" given the last visit date. Pure, reusable for
+// both local state and merging the value coming back from the cloud.
+function bumpStreak(streak, last, today) {
+  if (last === today) return streak; // already counted today
+  const y = localDay(new Date(Date.now() - 864e5));
+  return last === y ? streak + 1 : 1; // consecutive day → +1, otherwise reset
+}
 function calcStreak() {
   if (!user) return 0; // streaks belong to an account, anonymous visitors don't accrue
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
   const last = store.get("lastVisit", "");
   let streak = store.get("streak", 0);
   if (last !== today) {
-    const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-    streak = last === y ? streak + 1 : 1;
+    streak = bumpStreak(streak, last, today);
     store.set("streak", streak); store.set("lastVisit", today);
-    if ([7, 14, 21, 30].includes(streak)) {
-      setTimeout(() => toast(streak >= 30
-        ? "🏆 30 DAY STREAK COMPLETE! You've earned a free paid course. Claim it from your dashboard!"
-        : `🔥 ${streak} day streak! Milestone unlocked, keep the fire burning!`), 2200);
-    }
+    streakMilestoneToast(streak);
   }
+  // Reconcile with the cloud so the same account shows the same streak on every device.
+  syncStreakCloud();
   return streak;
+}
+
+/* ── Cross-device streak sync (Upstash via /api/streak) ── */
+let streakSyncing = false;
+async function syncStreakCloud() {
+  if (!user?.email || streakSyncing) return;
+  streakSyncing = true;
+  try {
+    const today = localDay();
+    const localStreak = store.get("streak", 1);
+    const localLast = store.get("lastVisit", today);
+    // Send our local view; the server merges it with whatever the account last
+    // recorded on any device and returns the authoritative streak.
+    const r = await api("/api/streak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: user.email, today, streak: localStreak, lastVisit: localLast }),
+    }, 1, 12000);
+    if (r && typeof r.streak === "number") {
+      const before = store.get("streak", 1);
+      store.set("streak", r.streak);
+      if (r.lastVisit) store.set("lastVisit", r.lastVisit);
+      if (r.streak !== before) { streakMilestoneToast(r.streak); renderDashboard(); }
+    }
+  } catch (_) {
+    // Offline or backend not configured: local streak still works, just no cross-device sync.
+  } finally {
+    streakSyncing = false;
+  }
 }
 const FALLBACK_QUOTES = [
   { quote: "Don't watch the clock; do what it does. Keep going.", tip: "Apply to 3 fresh roles today before lunch.", author: "JobReady AI" },
@@ -953,7 +1003,7 @@ function renderChallenge() {
     <h3>🏆 The 30-Day Job Streak Challenge <span class="badge y">Day ${Math.min(streak, 30)} of 30</span></h3>
     <p style="font-size:13.5px;color:var(--mut);margin-top:4px">Visit every single day and work on your job hunt. Complete 30 days without breaking the chain and get <b style="color:var(--warn)">one paid course of your choice, free</b>. Miss a day and the streak resets, so guard it like your dream job depends on it!</p>
     <div class="ch-track"><div class="fill" style="width:${pct}%"></div>
-      ${MILESTONES.map((m) => `<div class="ch-ms ${streak >= m.day ? "hit" : ""}" style="left:${(m.day / 30) * 100}%">${m.icon}<span>${m.label} · Day ${m.day}</span></div>`).join("")}
+      ${MILESTONES.map((m) => { const pos = (m.day / 30) * 100; const edge = pos >= 99 ? " edge-end" : pos <= 1 ? " edge-start" : ""; return `<div class="ch-ms${streak >= m.day ? " hit" : ""}${edge}" style="left:${pos}%">${m.icon}<span>${m.label} · Day ${m.day}</span></div>`; }).join("")}
     </div>
     ${done
       ? `<a class="btn gold" href="${claimMail}">🎁 Claim my free course now</a> <span style="font-size:12px;color:var(--dim);margin-left:8px">We'll reply with access to the course you pick.</span>`
@@ -970,6 +1020,101 @@ function renderChallenge() {
   renderDashboard();
   loadMotivation();
 })();
+
+/* ── First-time spotlight walkthrough ── */
+// Each step highlights one element (by CSS selector) and explains it. Mandatory
+// on a new user's first visit, with a one-time skip. Stored per account in the
+// vault (jr_ prefix) so it shows once and never nags a returning user.
+const TOUR_STEPS = [
+  { sel: '.nav a[data-v="dashboard"]', title: "🏠 Your Dashboard", body: "Your home base. See your ATS score, applications, interviews and your day streak at a glance, plus your next best step." },
+  { sel: '.nav a[data-v="analyzer"]', title: "🔍 Analyzer & ATS Score", body: "Upload your resume here. Get an honest ATS score, fixes, and a one-click Boost that rewrites it to score 90+ truthfully." },
+  { sel: '.nav a[data-v="tailor"]', title: "✂️ Tailor for a JD", body: "Paste any job description and we re-prioritize your real experience into a portal-ready resume, plus a cover letter." },
+  { sel: '.nav a[data-v="jobs"]', title: "💼 Job Openings", body: "Find fresh roles posted in the last 24 hours, aggregated from LinkedIn, Naukri, Indeed, Glassdoor and more." },
+  { sel: '.nav a[data-v="tracker"]', title: "📊 Application Tracker", body: "Every job you save or apply to lands here, from Saved all the way to Offer. Never lose track again." },
+  { sel: '.nav a[data-v="interview"]', title: "🎙️ Interview Mentor", body: "Practice real HR and technical rounds tailored to your resume. You can even speak your answers with the mic." },
+  { sel: '.nav a[data-v="salary"]', title: "💰 Salary Intel", body: "Realistic INR salary ranges by city and experience, plus skills that boost pay and negotiation tips for India." },
+  { sel: '.nav a[data-v="roadmap"]', title: "🗺️ Career Roadmap", body: "A step-by-step plan from where you are to your target role, built from your own resume." },
+  { sel: '#editResumeBtn', title: "✏️ Edit your resume anytime", body: "This button (and the badge beside it) jumps you straight to upload or edit your resume whenever you need." },
+  { sel: '#botFab', title: "💬 Meet Juno", body: "Stuck on anything? Juno, your helper, is always one tap away to explain how every feature works. That's the tour, you're all set!" },
+];
+let tourIdx = 0, tourActive = false;
+const tourSeen = () => store.get("tourDone", false);
+
+function startTour(force) {
+  if (tourActive) return;
+  if (!force && tourSeen()) return;
+  tourActive = true; tourIdx = 0;
+  // make sure the sidebar is visible so nav targets exist on screen
+  if (window.innerWidth <= 920) $("sidebar").classList.add("open");
+  else document.body.classList.remove("scollapsed");
+  $("tourBg").classList.add("show");
+  // dots
+  $("tourDots").innerHTML = TOUR_STEPS.map(() => "<i></i>").join("");
+  renderTour();
+  window.addEventListener("resize", renderTour);
+}
+function tourStep(dir) {
+  tourIdx += dir;
+  if (tourIdx < 0) tourIdx = 0;
+  if (tourIdx >= TOUR_STEPS.length) return endTour(false);
+  renderTour();
+}
+function renderTour() {
+  if (!tourActive) return;
+  const step = TOUR_STEPS[tourIdx];
+  const el = document.querySelector(step.sel);
+  if (!el) { return tourStep(1); } // skip any target not on screen
+  const r = el.getBoundingClientRect();
+  const pad = 6;
+  const top = r.top - pad, left = r.left - pad, w = r.width + pad * 2, h = r.height + pad * 2;
+  const W = window.innerWidth, H = window.innerHeight;
+  // ring
+  const ring = $("tourRing");
+  ring.style.top = top + "px"; ring.style.left = left + "px";
+  ring.style.width = w + "px"; ring.style.height = h + "px";
+  // four dim panels around the hole
+  $("tourDimTop").style.cssText = `top:0;left:0;width:100%;height:${Math.max(0, top)}px`;
+  $("tourDimBottom").style.cssText = `top:${top + h}px;left:0;width:100%;height:${Math.max(0, H - top - h)}px`;
+  $("tourDimLeft").style.cssText = `top:${top}px;left:0;width:${Math.max(0, left)}px;height:${h}px`;
+  $("tourDimRight").style.cssText = `top:${top}px;left:${left + w}px;width:${Math.max(0, W - left - w)}px;height:${h}px`;
+  // content
+  $("tourTitle").textContent = step.title;
+  $("tourBody").textContent = step.body;
+  $("tourBack").style.visibility = tourIdx === 0 ? "hidden" : "visible";
+  $("tourNext").textContent = tourIdx === TOUR_STEPS.length - 1 ? "Finish ✓" : "Next →";
+  Array.from($("tourDots").children).forEach((d, i) => d.classList.toggle("on", i === tourIdx));
+  // position popup: to the right of sidebar items, below top-right / above bottom-right targets
+  const pop = $("tourPop");
+  pop.style.visibility = "hidden";
+  requestAnimationFrame(() => {
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let pTop, pLeft;
+    const arrow = $("tourPopArrow");
+    arrow.style.cssText = "";
+    if (left + w + 18 + pw < W) {              // place to the right
+      pLeft = left + w + 16;
+      pTop = Math.min(Math.max(8, top), H - ph - 8);
+      arrow.style.cssText = `left:-8px;top:18px;border-right:none;border-top:none`;
+    } else if (top + h + 16 + ph < H) {        // place below
+      pTop = top + h + 14;
+      pLeft = Math.min(Math.max(8, left), W - pw - 8);
+      arrow.style.cssText = `top:-8px;left:24px;border-bottom:none;border-right:none`;
+    } else {                                    // place above
+      pTop = top - ph - 14;
+      pLeft = Math.min(Math.max(8, left + w - pw), W - pw - 8);
+      arrow.style.cssText = `bottom:-8px;left:24px;border-top:none;border-left:none`;
+    }
+    pop.style.top = pTop + "px"; pop.style.left = pLeft + "px";
+    pop.style.visibility = "visible";
+  });
+}
+function endTour(skipped) {
+  tourActive = false;
+  $("tourBg").classList.remove("show");
+  window.removeEventListener("resize", renderTour);
+  store.set("tourDone", true);
+  toast(skipped ? "Tour skipped, you can replay it from Juno anytime 👋" : "🎉 You're all set, welcome to JobReady AI!");
+}
 
 /* ── Speech to text for Interview Mentor (robust live dictation) ── */
 let recog = null;
@@ -1095,3 +1240,4 @@ function endBotChat() {
   $("botMsgs").appendChild(div);
   toast("✅ Chat with Juno ended");
 }
+/* end of app.js */
