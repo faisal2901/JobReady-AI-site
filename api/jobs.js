@@ -13,11 +13,59 @@ function applyCors(req, res) {
   return ok;
 }
 
+/* ── Per-IP rate limiting (Upstash if configured, in-memory fallback) ── */
+const JOBS_PER_MINUTE = Number(process.env.JOBS_PER_MINUTE) || 12;
+const JOBS_PER_DAY = Number(process.env.JOBS_PER_DAY) || 200;
+const memMinute = new Map(), memDay = new Map();
+function ipOf(req) {
+  return ((req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket?.remoteAddress || "unknown";
+}
+async function upstash(cmd) {
+  const url = process.env.UPSTASH_REDIS_REST_URL, tok = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const r = await fetch(`${url}/${cmd}`, { headers: { Authorization: `Bearer ${tok}` } });
+  return (await r.json()).result;
+}
+async function rateLimited(ip) {
+  const day = new Date().toISOString().slice(0, 10);
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    try {
+      const mKey = `jbm:${ip}:${Math.floor(Date.now() / 60000)}`;
+      const m = await upstash(`incr/${mKey}`);
+      if (m === 1) await upstash(`expire/${mKey}/70`);
+      if (m > JOBS_PER_MINUTE) return "minute";
+      const dKey = `jbd:${ip}:${day}`;
+      const d = await upstash(`incr/${dKey}`);
+      if (d === 1) await upstash(`expire/${dKey}/90000`);
+      if (d > JOBS_PER_DAY) return "day";
+      return null;
+    } catch (_) { /* fall through to memory */ }
+  }
+  const now = Date.now();
+  const recent = (memMinute.get(ip) || []).filter((t) => now - t < 60000);
+  recent.push(now); memMinute.set(ip, recent);
+  if (recent.length > JOBS_PER_MINUTE) return "minute";
+  const dk = ip + day;
+  const dn = (memDay.get(dk) || 0) + 1; memDay.set(dk, dn);
+  if (memDay.size > 5000) memDay.clear();
+  if (dn > JOBS_PER_DAY) return "day";
+  return null;
+}
+// Cap and clean a query param: trims, removes control chars, enforces a max length.
+function clean(v, max) {
+  return String(v ?? "").replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, max);
+}
+
 module.exports = async (req, res) => {
   const corsOk = applyCors(req, res);
   if (req.method === "OPTIONS") return res.status(corsOk ? 200 : 403).end();
   if (!corsOk) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
+
+  // Abuse protection: throttle per IP so bots can't drain the free JSearch quota.
+  const limited = await rateLimited(ipOf(req));
+  if (limited === "minute") return res.status(429).json({ ok: false, error: "⏳ Too many searches in a short time. Please wait a minute and try again." });
+  if (limited === "day") return res.status(429).json({ ok: false, error: "🌙 You've hit today's job-search limit. It refreshes tomorrow." });
+
   // Cache identical searches at Vercel's edge for 10 minutes: saves JSearch quota and is much faster
   res.setHeader("Cache-Control", "public, s-maxage=600, stale-while-revalidate=1800");
 
@@ -27,7 +75,15 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { q = "software developer", location = "India", datePosted = "today", page = "1", remote, employmentType } = req.query || {};
+    const rawq = req.query || {};
+    // Validate & cap every input so oversized or malformed params can't be abused.
+    const q = clean(rawq.q, 120) || "software developer";
+    const location = clean(rawq.location, 80) || "India";
+    const datePosted = ["all", "today", "3days", "week", "month"].includes(rawq.datePosted) ? rawq.datePosted : "today";
+    const pageNum = Math.min(20, Math.max(1, parseInt(rawq.page, 10) || 1));
+    const page = String(pageNum);
+    const remote = rawq.remote;
+    const employmentType = ["FULLTIME", "PARTTIME", "CONTRACTOR", "INTERN"].includes(rawq.employmentType) ? rawq.employmentType : "";
 
     const params = new URLSearchParams({
       query: `${q} in ${location}`,
