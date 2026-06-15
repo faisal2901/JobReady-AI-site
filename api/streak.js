@@ -42,9 +42,34 @@ function roll(streak, lastVisit, today) {
   return { streak: Math.max(1, streak), lastVisit };
 }
 
+/* ── Per-IP rate limiting so the sync endpoint can't be hammered ── */
+const memMinute = new Map();
+function ipOf(req) {
+  return ((req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket?.remoteAddress || "unknown";
+}
+async function tooFast(ip) {
+  const MAX = 30; // generous: the client only calls this on login/day-change
+  if (UPSTASH_URL && UPSTASH_TOKEN) {
+    try {
+      const k = `jrsm:${ip}:${Math.floor(Date.now() / 60000)}`;
+      const m = await redis(["INCR", k]);
+      if (m === 1) await redis(["EXPIRE", k, "70"]);
+      return m > MAX;
+    } catch (_) { /* fall through */ }
+  }
+  const now = Date.now();
+  const recent = (memMinute.get(ip) || []).filter((t) => now - t < 60000);
+  recent.push(now); memMinute.set(ip, recent);
+  if (memMinute.size > 5000) memMinute.clear();
+  return recent.length > MAX;
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
+  // App-origin gate + throttle, matching the other endpoints.
+  if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
+  if (await tooFast(ipOf(req))) return res.status(429).json({ ok: false, error: "Too many requests, slow down." });
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; }
