@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -198,9 +198,33 @@ function onGoogleCred(resp) {
     completeLogin({ name: payload.name || "User", email: payload.email || "", pic: payload.picture || "", via: "google" });
   } catch (_) { toast("Sign in failed, please try again"); }
 }
+// Common throwaway/disposable email domains we politely refuse, to cut down on
+// bot and spam signups on the no-password email login.
+const DISPOSABLE_DOMAINS = new Set([
+  "mailinator.com", "10minutemail.com", "guerrillamail.com", "tempmail.com", "temp-mail.org",
+  "trashmail.com", "yopmail.com", "throwawaymail.com", "getnada.com", "sharklasers.com",
+  "dispostable.com", "maildrop.cc", "fakeinbox.com", "tempmailo.com", "mailnesia.com",
+]);
+let lastLoginAttempt = 0;
 function fallbackLogin() {
-  const n = $("fName").value.trim(), e = $("fEmail").value.trim();
-  if (!n || !/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(e)) return toast("⚠️ Enter your name and a valid email");
+  // Throttle: block rapid repeated attempts (basic bot / brute-force guard).
+  const now = Date.now();
+  if (now - lastLoginAttempt < 2000) return toast("⏳ One moment, please try again in a couple of seconds.");
+  lastLoginAttempt = now;
+
+  const n = $("fName").value.trim(), e = $("fEmail").value.trim().toLowerCase();
+  // Name: 2 to 60 chars, letters/spaces/.'- only (no scripts, no urls).
+  if (n.length < 2 || n.length > 60 || !/^[A-Za-z][A-Za-z .'-]*$/.test(n)) {
+    return toast("⚠️ Please enter your real name (letters only).");
+  }
+  // Email: stricter RFC-ish check plus a sane length cap.
+  if (e.length > 120 || !/^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$/.test(e)) {
+    return toast("⚠️ Please enter a valid email address.");
+  }
+  const domain = e.split("@")[1] || "";
+  if (DISPOSABLE_DOMAINS.has(domain)) {
+    return toast("⚠️ Please use a permanent email so we can save your progress.");
+  }
   completeLogin({ name: n, email: e, pic: "", via: "email" });
 }
 function openSignout() { $("soModal").classList.add("show"); }
