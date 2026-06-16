@@ -55,10 +55,11 @@ h1,h2,h3,.brand{font-family:'Sora',sans-serif}
 /* ── Sidebar ── */
 .sidebar{width:246px;background:rgba(13,13,28,.85);backdrop-filter:blur(18px);border-right:1px solid var(--border);position:fixed;inset:0 auto 0 0;display:flex;flex-direction:column;padding:20px 14px;z-index:50;transition:transform .3s cubic-bezier(.4,0,.2,1)}
 body.scollapsed .sidebar{transform:translateX(-100%)}
-.brand{display:flex;align-items:center;gap:11px;font-size:18px;font-weight:800;padding:0 6px 18px}
-.brand svg.blogo{width:42px;height:42px;border-radius:12px;box-shadow:0 4px 20px rgba(124,92,255,.5);animation:pulse 3.2s ease-in-out infinite;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:800;padding:0 6px 18px}
+.brand>div{min-width:0}
+.brand svg.blogo{width:40px;height:40px;border-radius:12px;box-shadow:0 4px 20px rgba(124,92,255,.5);animation:pulse 3.2s ease-in-out infinite;flex-shrink:0}
 @keyframes pulse{0%,100%{box-shadow:0 4px 20px rgba(124,92,255,.5)}50%{box-shadow:0 4px 32px rgba(244,114,182,.65)}}
-.brand small{display:block;font-family:'Inter';font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.6px}
+.brand small{display:block;font-family:'Inter';font-size:9px;font-weight:600;color:var(--mut);letter-spacing:.3px;white-space:nowrap}
 .sclose{margin-left:auto;background:none;border:1px solid var(--border);color:var(--dim);border-radius:9px;width:28px;height:28px;cursor:pointer;font-size:13px;transition:.15s}
 .sclose:hover{color:#fff;border-color:var(--acc)}
 .nav{display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto}
@@ -280,11 +281,36 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
 .tour-skip{position:fixed;top:16px;right:18px;z-index:403;background:rgba(19,19,42,.9);border:1px solid var(--border2);color:var(--mut);border-radius:99px;padding:6px 15px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s}
 .tour-skip:hover{color:#fff;border-color:var(--acc)}
 @media(max-width:920px){
-  .sidebar{transform:translateX(-100%)}
+  body{font-size:14.5px}
+  .sidebar{transform:translateX(-100%);width:min(82vw,290px)}
   .sidebar.open{transform:none;box-shadow:30px 0 80px rgba(0,0,0,.6)}
-  .main{margin-left:0;padding-top:16px}
-  .msg{max-width:94%}
-  .botpanel{bottom:90px}
+  .main{margin-left:0;padding:14px 14px 100px}
+  .topbar{flex-wrap:wrap;gap:10px;margin-bottom:18px}
+  .topbar h1{font-size:20px}
+  .topright{width:100%;justify-content:flex-start;gap:8px}
+  .msg{max-width:92%}
+  .botpanel{bottom:84px;right:14px;left:14px;width:auto;height:min(70vh,486px)}
+  .fab{bottom:18px;right:18px;width:52px;height:52px}
+  /* let every multi-column grid collapse cleanly on phones */
+  .grid[style*="grid-template-columns"]{grid-template-columns:1fr !important}
+  .g2{grid-template-columns:1fr}
+  .hero{padding:22px 18px}
+  .card{padding:18px}
+  .gauge-wrap{gap:16px;justify-content:center}
+  .tstat .ts{min-width:calc(33% - 8px)}
+  .trow{gap:8px}
+  .trow select{flex:1}
+  .tour-pop{width:min(300px,calc(100vw - 28px))}
+  .tour-skip{top:12px;right:12px}
+}
+@media(max-width:480px){
+  .topbar h1{font-size:18px}
+  .stat b{font-size:23px}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .ch-track{margin:24px 14px 44px}
+  .ch-ms span{font-size:9px}
+  .btn{padding:10px 16px;font-size:13.5px}
+  .userchip{font-size:12px}
 }
 </style>
 </head>
