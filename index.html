@@ -56,10 +56,10 @@ h1,h2,h3,.brand{font-family:'Sora',sans-serif}
 .sidebar{width:246px;background:rgba(13,13,28,.85);backdrop-filter:blur(18px);border-right:1px solid var(--border);position:fixed;inset:0 auto 0 0;display:flex;flex-direction:column;padding:20px 14px;z-index:50;transition:transform .3s cubic-bezier(.4,0,.2,1)}
 body.scollapsed .sidebar{transform:translateX(-100%)}
 .brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;padding:0 4px 18px}
-.brand>div:nth-of-type(1){flex:1;min-width:0;white-space:nowrap;line-height:1.15}
+.brand>div:nth-of-type(1){flex:1;min-width:0;white-space:nowrap;line-height:1.15;overflow:hidden;text-overflow:ellipsis}
 .brand svg.blogo{width:38px;height:38px;border-radius:12px;box-shadow:0 4px 20px rgba(124,92,255,.5);animation:pulse 3.2s ease-in-out infinite;flex-shrink:0}
 @keyframes pulse{0%,100%{box-shadow:0 4px 20px rgba(124,92,255,.5)}50%{box-shadow:0 4px 32px rgba(244,114,182,.65)}}
-.brand small{display:block;font-family:'Inter';font-size:9px;font-weight:600;color:var(--mut);letter-spacing:.2px;white-space:nowrap}
+.brand small{display:block;font-family:'Inter';font-size:8.5px;font-weight:600;color:var(--mut);letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sclose{flex-shrink:0;display:grid;place-items:center;background:none;border:1px solid var(--border);color:var(--dim);border-radius:9px;width:28px;height:28px;cursor:pointer;font-size:13px;line-height:1;transition:.15s}
 .sclose:hover{color:#fff;border-color:var(--acc)}
 .nav{display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto}
