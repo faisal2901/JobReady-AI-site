@@ -60,7 +60,8 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .brand svg.blogo{width:40px;height:40px;border-radius:12px;box-shadow:0 4px 20px rgba(124,92,255,.5);animation:pulse 3.2s ease-in-out infinite;flex-shrink:0}
 @keyframes pulse{0%,100%{box-shadow:0 4px 20px rgba(124,92,255,.5)}50%{box-shadow:0 4px 32px rgba(244,114,182,.65)}}
 .brand small{display:block;font-family:'Inter';font-size:9px;font-weight:600;color:var(--mut);letter-spacing:.3px;white-space:nowrap}
-.sclose{margin-left:auto;background:none;border:1px solid var(--border);color:var(--dim);border-radius:9px;width:28px;height:28px;cursor:pointer;font-size:13px;transition:.15s}
+.brand>div:nth-of-type(1){flex:1;min-width:0}
+.sclose{flex-shrink:0;display:grid;place-items:center;background:none;border:1px solid var(--border);color:var(--dim);border-radius:9px;width:28px;height:28px;cursor:pointer;font-size:13px;line-height:1;transition:.15s}
 .sclose:hover{color:#fff;border-color:var(--acc)}
 .nav{display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto}
 .nav a{display:flex;align-items:center;gap:12px;padding:10.5px 12px;border-radius:11px;color:var(--mut);text-decoration:none;font-weight:500;font-size:14px;cursor:pointer;transition:.18s;border:1px solid transparent;position:relative}
@@ -74,8 +75,9 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .side-foot a{color:var(--acc2);text-decoration:none;font-weight:600}
 .side-foot a:hover{text-decoration:underline}
 
-.main{flex:1;margin-left:246px;padding:24px clamp(16px,4vw,44px) 110px;max-width:1190px;transition:margin-left .3s cubic-bezier(.4,0,.2,1)}
-body.scollapsed .main{margin-left:0}
+.main{flex:1;margin-left:246px;padding:24px clamp(16px,4vw,44px) 110px;max-width:1190px;transition:margin .3s cubic-bezier(.4,0,.2,1)}
+/* When the sidebar is hidden, center the content column instead of leaving a blank band. */
+body.scollapsed .main{margin-left:auto;margin-right:auto}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
 .topbar h1{font-size:clamp(20px,3vw,26px);font-weight:800}
 .topbar .sub{color:var(--mut);font-size:13.5px;margin-top:2px}
@@ -280,6 +282,14 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
 .tour-foot .tbtns{display:flex;gap:8px}
 .tour-skip{position:fixed;top:16px;right:18px;z-index:403;background:rgba(19,19,42,.9);border:1px solid var(--border2);color:var(--mut);border-radius:99px;padding:6px 15px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s}
 .tour-skip:hover{color:#fff;border-color:var(--acc)}
+
+/* ── Celebration / streak modals (reuse .modal-bg / .modal styling) ── */
+.celebrate{font-size:60px;line-height:1;margin-bottom:6px;animation:pop .6s cubic-bezier(.2,.8,.3,1.4)}
+@keyframes pop{0%{transform:scale(.3) rotate(-12deg);opacity:0}60%{transform:scale(1.15) rotate(5deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+.confetti{position:fixed;inset:0;z-index:210;pointer-events:none;overflow:hidden;display:none}
+.confetti.show{display:block}
+.confetti i{position:absolute;top:-12px;width:9px;height:14px;opacity:.95;border-radius:2px;animation:cfall linear forwards}
+@keyframes cfall{0%{transform:translateY(-20px) rotate(0);opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:.9}}
 @media(max-width:920px){
   body{font-size:14.5px}
   .sidebar{transform:translateX(-100%);width:min(82vw,290px)}
@@ -553,6 +563,18 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
       <div id="roadmapOut"></div>
     </section>
   </main>
+</div>
+
+<!-- ── Confetti layer + celebration modal (milestones & streak messages) ── -->
+<div class="confetti" id="confetti"></div>
+<div class="modal-bg" id="celebrateModal">
+  <div class="modal">
+    <button class="mx" onclick="closeCelebrate()" aria-label="Close">✕</button>
+    <div class="celebrate" id="celebrateIcon">🎉</div>
+    <h2 id="celebrateTitle"></h2>
+    <p id="celebrateBody"></p>
+    <button class="btn" id="celebrateBtn" onclick="closeCelebrate()">Let's keep going 🚀</button>
+  </div>
 </div>
 
 <!-- ── Login modal ── -->
