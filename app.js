@@ -205,9 +205,10 @@ function completeLogin(u) {
   toast(returning
     ? `🎉 Welcome back to your JobReady journey, ${first}! Everything is right where you left it.`
     : `🌟 Welcome aboard, ${first}! Let's get you job ready.`);
-  // First-time Google users get a mandatory one-time guided walkthrough.
-  if (!returning && u.via === "google" && !tourSeen()) {
-    setTimeout(() => startTour(false), 900);
+  // Every brand-new user (Google or email) gets the guided walkthrough once,
+  // automatically. We wait for the login modal to finish closing first.
+  if (!returning && !tourSeen()) {
+    setTimeout(() => startTour(false), 700);
   }
 }
 function onGoogleCred(resp) {
