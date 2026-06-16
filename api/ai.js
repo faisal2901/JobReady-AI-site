@@ -68,6 +68,7 @@ async function callGeminiOnly({ system, user, json = false, temperature = 0.4, m
   if (sawRateLimit) throw new Error("HIGH_DEMAND");
   throw lastErr || new Error("All Gemini models failed");
 }
+
 /* ---------- Groq fallback (free, very fast OpenAI-compatible API) ---------- */
 // Used automatically only when Gemini is rate-limited or fails. Set GROQ_API_KEY
 // in Vercel to enable. Get a free key at https://console.groq.com/keys
@@ -302,8 +303,16 @@ async function boost({ resume, jd, originalScore }) {
 
 /* ---------- tailor ---------- */
 async function tailor({ resume, jd, jobTitle, company }) {
-  const sys = `You are an elite resume writer who tailors resumes to job descriptions while staying 100% truthful. Never invent employers, dates, degrees, or experience that is not in the original resume. You may rephrase, reorder, emphasize, and naturally weave in JD keywords where genuinely supported by the candidate's background. Return valid JSON only.`;
-  const usr = `Rewrite this resume tailored for the job below. ATS friendly and recruiter impressive.
+  const sys = `You are an elite ATS resume writer. Your single goal: rewrite the candidate's resume so it scores as high as possible against the SPECIFIC job description provided, while staying 100% truthful. Hard rules: never invent employers, job titles, dates, degrees, certifications, or experience absent from the original. You MAY rephrase, reorder, re-emphasize, expand abbreviations, surface buried skills, and weave in the JD's exact terminology wherever the candidate genuinely has that skill or did that work. The output must read like it was written FOR this exact job. Return valid JSON only.`;
+  const usr = `Tailor the resume below to the TARGET JOB so it would score 85+ on an ATS keyword match, truthfully.
+
+WORK IN THIS ORDER (think silently, then output JSON):
+1. Extract from the JD: the role's core responsibilities, the must-have hard skills/tools, the key soft skills, and the EXACT keyword phrases an ATS would scan for (job titles, tools, technologies, methodologies, qualifications).
+2. Map each JD requirement to evidence already in the candidate's resume. For every requirement the candidate genuinely meets, make sure the tailored resume states it using the JD's own wording (e.g. if JD says "Power BI" and resume says "MS Power BI dashboards", use "Power BI").
+3. Put the most JD-relevant experience, skills and projects FIRST. Lead the PROFESSIONAL SUMMARY with the target role title and the top 3-4 JD keywords the candidate truly matches.
+4. In SKILLS, explicitly list every JD hard-skill the candidate actually has, spelled exactly as the JD spells it.
+5. Rewrite EXPERIENCE bullets to mirror the JD's responsibilities and start with strong action verbs, keeping every number/metric from the original and adding none that weren't there.
+6. Do NOT fabricate to cover a gap. If the candidate is missing a JD requirement, simply omit it (do not invent it) and note it in "gaps".
 
 ORIGINAL RESUME:
 """${resume.slice(0, 20000)}"""
@@ -311,21 +320,22 @@ ORIGINAL RESUME:
 TARGET JOB${jobTitle ? ` (${jobTitle}${company ? " @ " + company : ""})` : ""}:
 """${(jd || "").slice(0, 8000)}"""
 
-Structure the output resume EXACTLY like this (plain text):
+Output resume format (plain text):
 Line 1: Full Name
 Line 2: Phone | Email | LinkedIn/Location
-Then sections in CAPS: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, PROJECTS (if any), EDUCATION, CERTIFICATIONS (if any).
-For each job under EXPERIENCE put "Job Title at Company | Dates" on its own line, then '•' bullets.
-SKILLS as grouped lines like "Languages: X, Y, Z". Quantified bullets, strong action verbs, JD keywords woven in naturally.
+Then CAPS sections in this order: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, PROJECTS (if any), EDUCATION, CERTIFICATIONS (if any).
+Under EXPERIENCE: "Job Title at Company | Dates" on its own line, then '•' bullets.
+SKILLS grouped like "Tools: Power BI, Tableau, Excel". Quantified bullets, JD keywords woven in naturally (no keyword stuffing).
 
 Return JSON:
 {
   "tailoredResume": "full tailored resume as plain text",
-  "changes": ["what was changed and why, 5-8 items"],
-  "keywordsAdded": ["..."],
+  "changes": ["what was changed and why, 5-8 items, referencing specific JD requirements addressed"],
+  "keywordsAdded": ["the exact JD keywords now reflected in the resume"],
+  "gaps": ["JD requirements the candidate does not yet meet (honest, may be empty)"],
   "matchEstimate": 0-100
 }`;
-  return geminiJSON({ system: sys, user: usr, temperature: 0.3, maxTokens: 8192 });
+  return geminiJSON({ system: sys, user: usr, temperature: 0.25, maxTokens: 8192 });
 }
 
 async function coverletter({ resume, jd, jobTitle, company }) {
@@ -434,7 +444,9 @@ const ACTIONS = { analyze, boost, tailor, coverletter, interview, salary, roadma
    Identical deterministic requests (same resume + same inputs) are answered from cache
    WITHOUT touching Gemini. Saves free-tier quota massively and makes repeats instant.
    Uses Upstash Redis when configured, plus an in-memory LRU per warm instance. */
-const CACHEABLE = { analyze: 14 * 86400, salary: 7 * 86400, roadmap: 14 * 86400 }; // TTL seconds
+// Identical inputs return the identical cached result (consistency) and skip a
+// fresh AI call (avoids rate-limit errors on repeats). TTL in seconds.
+const CACHEABLE = { analyze: 14 * 86400, salary: 7 * 86400, roadmap: 14 * 86400, tailor: 14 * 86400, boost: 14 * 86400, coverletter: 14 * 86400 };
 function srvHash(s) {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
@@ -445,6 +457,9 @@ function respCacheKey(action, body) {
     analyze: [body.resume, body.jd],
     salary: [body.role, body.city, body.years, body.skills],
     roadmap: [body.resume, body.currentRole, body.targetRole, body.timeline],
+    tailor: [body.resume, body.jd, body.jobTitle, body.company],
+    boost: [body.resume, body.jd],
+    coverletter: [body.resume, body.jd, body.jobTitle, body.company],
   }[action].map((x) => String(x || "").toLowerCase().replace(/\s+/g, " ").trim()).join("||");
   return `jrc:${action}:${srvHash(sig)}`;
 }
@@ -543,6 +558,15 @@ module.exports = async (req, res) => {
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    // Reject oversized payloads early so a giant paste can't waste tokens or memory.
+    const MAX_FIELD = 60000;   // ~60k chars per text field (a long resume/JD is well under this)
+    const MAX_TOTAL = 200000;  // ~200k chars for the whole request body
+    for (const k of ["resume", "jd", "question"]) {
+      if (typeof body[k] === "string" && body[k].length > MAX_FIELD) {
+        return res.status(413).json({ ok: false, error: `That ${k === "jd" ? "job description" : k} is too long. Please shorten it and try again.` });
+      }
+    }
+    try { if (JSON.stringify(body).length > MAX_TOTAL) return res.status(413).json({ ok: false, error: "Request is too large. Please reduce the text and try again." }); } catch (_) {}
     const fn = ACTIONS[body.action];
     if (!fn) return res.status(400).json({ error: `Unknown action: ${body.action}` });
     if (["analyze", "tailor", "boost"].includes(body.action) && !body.resume) {
