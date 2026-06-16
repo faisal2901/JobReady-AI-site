@@ -17,7 +17,7 @@ function geminiKeys() {
   return [...new Set(list)];
 }
 
-async function callGemini({ system, user, json = false, temperature = 0.4, maxTokens = 8192 }) {
+async function callGeminiOnly({ system, user, json = false, temperature = 0.4, maxTokens = 8192 }) {
   const KEYS = geminiKeys();
   if (!KEYS.length) throw new Error("GEMINI_API_KEY is not set. Add it in Vercel, Settings, Environment Variables.");
 
@@ -67,6 +67,73 @@ async function callGemini({ system, user, json = false, temperature = 0.4, maxTo
   }
   if (sawRateLimit) throw new Error("HIGH_DEMAND");
   throw lastErr || new Error("All Gemini models failed");
+}
+/* ---------- Groq fallback (free, very fast OpenAI-compatible API) ---------- */
+// Used automatically only when Gemini is rate-limited or fails. Set GROQ_API_KEY
+// in Vercel to enable. Get a free key at https://console.groq.com/keys
+const GROQ_MODELS = (process.env.GROQ_MODELS || "llama-3.3-70b-versatile,llama-3.1-8b-instant")
+  .split(",").map((m) => m.trim()).filter(Boolean);
+function groqKeys() {
+  const list = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY2]
+    .concat((process.env.GROQ_API_KEYS || "").split(","))
+    .map((k) => (k || "").trim()).filter(Boolean);
+  return [...new Set(list)];
+}
+async function callGroq({ system, user, json = false, temperature = 0.4, maxTokens = 8192 }) {
+  const KEYS = groqKeys();
+  if (!KEYS.length) throw new Error("NO_GROQ"); // not configured, so no fallback available
+  const body = {
+    messages: [
+      { role: "system", content: system + "\n" + STYLE },
+      { role: "user", content: user },
+    ],
+    temperature,
+    max_tokens: Math.min(maxTokens, 8000),
+    ...(json ? { response_format: { type: "json_object" } } : {}),
+  };
+  const deadline = Date.now() + CALL_BUDGET_MS;
+  let lastErr = null;
+  for (const model of GROQ_MODELS) {
+    for (const key of KEYS) {
+      if (Date.now() > deadline) break;
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), Math.min(30000, deadline - Date.now()));
+        const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ ...body, model }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (r.status === 429 || r.status === 503) { lastErr = new Error(`Groq ${model} busy`); continue; }
+        if (!r.ok) { const t = await r.text(); lastErr = new Error(`Groq ${model} ${r.status}: ${t.slice(0, 200)}`); continue; }
+        const data = await r.json();
+        const text = data?.choices?.[0]?.message?.content || "";
+        if (!text) { lastErr = new Error("Groq empty response"); continue; }
+        return text;
+      } catch (e) { lastErr = e; }
+    }
+  }
+  throw lastErr || new Error("All Groq models failed");
+}
+
+// Primary entry point used by every feature: Gemini first, Groq as automatic
+// fallback when Gemini is rate-limited or otherwise fails. If Groq isn't
+// configured, the original Gemini error is surfaced.
+async function callGemini(opts) {
+  try {
+    return await callGeminiOnly(opts);
+  } catch (e) {
+    try {
+      return await callGroq(opts);
+    } catch (e2) {
+      if (e2 && e2.message === "NO_GROQ") throw e; // no fallback set up → original error
+      // Both providers failed → keep the friendly high-demand message if either saw a limit.
+      if (e.message === "HIGH_DEMAND" || /busy|429|503/i.test(e2.message)) throw new Error("HIGH_DEMAND");
+      throw e2;
+    }
+  }
 }
 
 function extractJSON(text) {
