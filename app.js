@@ -923,12 +923,20 @@ function localDay(d = new Date()) {
   const t = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return t.toISOString().slice(0, 10);
 }
-function streakMilestoneToast(streak) {
-  if ([7, 14, 21, 30].includes(streak)) {
-    setTimeout(() => toast(streak >= 30
-      ? "🏆 30 DAY STREAK COMPLETE! You've earned a free paid course. Claim it from your dashboard!"
-      : `🔥 ${streak} day streak! Milestone unlocked, keep the fire burning!`), 2200);
-  }
+const MILESTONE_INFO = {
+  7:  { icon: "⚡", title: "Day 7 — Momentum unlocked!", body: "One full week of showing up for your career. You're building real momentum, keep the chain alive!" },
+  14: { icon: "🔥", title: "Day 14 — Halfway Hero!", body: "Two weeks strong! You're halfway to the finish line and a free course. Incredible consistency." },
+  21: { icon: "💪", title: "Day 21 — Unstoppable!", body: "21 days straight! They say it takes 21 days to build a habit, you just did. Almost there!" },
+  30: { icon: "🏆", title: "Day 30 — CHAMPION! 🎉", body: "You completed the 30-Day Job Streak Challenge! You've earned one paid course of your choice, free. Claim it from your dashboard." },
+};
+// Fire the one-time celebration for a milestone, if this user hasn't seen it yet.
+function celebrateMilestone(streak) {
+  const m = MILESTONE_INFO[streak];
+  if (!m) return;
+  const seenKey = "celebrated_" + streak;
+  if (store.get(seenKey, false)) return;     // already celebrated this milestone for this account
+  store.set(seenKey, true);
+  setTimeout(() => showCelebrate(m.icon, m.title, m.body, true), 800);
 }
 // Advance the streak for "today" given the last visit date. Pure, reusable for
 // both local state and merging the value coming back from the cloud.
@@ -941,15 +949,54 @@ function calcStreak() {
   if (!user) return 0; // streaks belong to an account, anonymous visitors don't accrue
   const today = localDay();
   const last = store.get("lastVisit", "");
-  let streak = store.get("streak", 0);
+  const prev = store.get("streak", 0);
+  let streak = prev;
   if (last !== today) {
     streak = bumpStreak(streak, last, today);
+    // Detect a broken chain: had a streak >= 3, missed days, and it reset to 1.
+    if (last && prev >= 3 && streak === 1) {
+      const brokeKey = "broke_seen_" + today;
+      if (!store.get(brokeKey, false)) {
+        store.set(brokeKey, true);
+        setTimeout(() => showCelebrate("💔", "Your streak reset", `Your ${prev}-day streak ended because a day was missed. No worries, every champion restarts. Today is Day 1 again, let's rebuild it stronger! 🔥`, false), 800);
+      }
+    }
     store.set("streak", streak); store.set("lastVisit", today);
-    streakMilestoneToast(streak);
+    celebrateMilestone(streak);
   }
   // Reconcile with the cloud so the same account shows the same streak on every device.
   syncStreakCloud();
   return streak;
+}
+
+/* ── Celebration modal + confetti ── */
+function showCelebrate(icon, title, body, confetti) {
+  $("celebrateIcon").textContent = icon;
+  $("celebrateTitle").textContent = title;
+  $("celebrateBody").textContent = body;
+  $("celebrateModal").classList.add("show");
+  if (confetti) burstConfetti();
+}
+function closeCelebrate() {
+  $("celebrateModal").classList.remove("show");
+  $("confetti").classList.remove("show");
+  $("confetti").innerHTML = "";
+}
+function burstConfetti() {
+  const wrap = $("confetti");
+  wrap.innerHTML = "";
+  const colors = ["#7c5cff", "#f472b6", "#22d3ee", "#34d399", "#fbbf24", "#a855f7"];
+  for (let i = 0; i < 90; i++) {
+    const c = document.createElement("i");
+    c.style.left = Math.random() * 100 + "vw";
+    c.style.background = colors[i % colors.length];
+    c.style.animationDuration = (2.2 + Math.random() * 1.8) + "s";
+    c.style.animationDelay = (Math.random() * 0.5) + "s";
+    c.style.transform = `scale(${0.7 + Math.random()})`;
+    wrap.appendChild(c);
+  }
+  wrap.classList.add("show");
+  setTimeout(() => { wrap.classList.remove("show"); wrap.innerHTML = ""; }, 4500);
 }
 
 /* ── Cross-device streak sync (Upstash via /api/streak) ── */
@@ -972,7 +1019,7 @@ async function syncStreakCloud() {
       const before = store.get("streak", 1);
       store.set("streak", r.streak);
       if (r.lastVisit) store.set("lastVisit", r.lastVisit);
-      if (r.streak !== before) { streakMilestoneToast(r.streak); renderDashboard(); }
+      if (r.streak !== before) { celebrateMilestone(r.streak); renderDashboard(); }
     }
   } catch (_) {
     // Offline or backend not configured: local streak still works, just no cross-device sync.
