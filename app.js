@@ -1,4 +1,4 @@
-/* ═══════════════ JobReady AI — app.js (v3) ═══════════════ */
+/* ═══════════════ JobTopper — app.js (v3) ═══════════════ */
 "use strict";
 
 /* ── CONFIG ── */
@@ -116,7 +116,7 @@ function errBox(e, retryJs) {
   const net = /failed to fetch|network|timed? ?out|504/i.test(m);
   const title = busy ? "☕ Hang tight, high demand right now!" : net ? "📡 Connection hiccup" : "😅 Something went wrong";
   const sub = busy
-    ? "Lots of job seekers are using JobReady AI at this moment. Take a sip of chai and hit retry in about 30 seconds. Your data is safe."
+    ? "Lots of job seekers are using JobTopper at this moment. Take a sip of chai and hit retry in about 30 seconds. Your data is safe."
     : net
       ? "Your internet or our server blinked. One retry usually fixes it."
       : m;
@@ -203,7 +203,7 @@ function completeLogin(u) {
   closeLogin(); renderAuth(); renderDashboard();
   const first = u.name.split(" ")[0];
   toast(returning
-    ? `🎉 Welcome back to your JobReady journey, ${first}! Everything is right where you left it.`
+    ? `🎉 Welcome back to your JobTopper journey, ${first}! Everything is right where you left it.`
     : `🌟 Welcome aboard, ${first}! Let's get you job ready.`);
   // Every brand-new user (Google or email) gets the guided walkthrough once,
   // automatically. We wait for the login modal to finish closing first.
@@ -1028,9 +1028,9 @@ async function syncStreakCloud() {
   }
 }
 const FALLBACK_QUOTES = [
-  { quote: "Don't watch the clock; do what it does. Keep going.", tip: "Apply to 3 fresh roles today before lunch.", author: "JobReady AI" },
-  { quote: "Rejection is redirection. Every no is data, not defeat.", tip: "Re-read one rejected JD and update one resume bullet to match it.", author: "JobReady AI" },
-  { quote: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action. (APJ Abdul Kalam)", tip: "Practice one interview answer out loud today.", author: "JobReady AI" },
+  { quote: "Don't watch the clock; do what it does. Keep going.", tip: "Apply to 3 fresh roles today before lunch.", author: "JobTopper" },
+  { quote: "Rejection is redirection. Every no is data, not defeat.", tip: "Re-read one rejected JD and update one resume bullet to match it.", author: "JobTopper" },
+  { quote: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action. (APJ Abdul Kalam)", tip: "Practice one interview answer out loud today.", author: "JobTopper" },
 ];
 async function loadMotivation() {
   const today = new Date().toISOString().slice(0, 10);
@@ -1088,7 +1088,7 @@ function renderChallenge() {
   const done = streak >= 30;
   const next = MILESTONES.find((m) => m.day > streak);
   const claimMail = "mailto:faizalkhan1111222@gmail.com?subject=" + encodeURIComponent("🏆 30-Day Streak Completed! Free Course Claim") +
-    "&body=" + encodeURIComponent(`Hi JobReady AI team,\n\nI completed the 30-day streak challenge!\n\nMy name: ${user.name}\nMy email: ${user.email}\nCourse I would like: (tell us which paid course you want)\n\nAttaching my streak screenshot.\n\nThank you!`);
+    "&body=" + encodeURIComponent(`Hi JobTopper team,\n\nI completed the 30-day streak challenge!\n\nMy name: ${user.name}\nMy email: ${user.email}\nCourse I would like: (tell us which paid course you want)\n\nAttaching my streak screenshot.\n\nThank you!`);
   el.innerHTML = `
     <span class="ch-flame">${done ? "🏆" : "🔥"}</span>
     <h3>🏆 The 30-Day Job Streak Challenge <span class="badge y">Day ${Math.min(streak, 30)} of 30</span></h3>
@@ -1206,7 +1206,7 @@ function endTour(skipped) {
   $("tourBg").classList.remove("show");
   window.removeEventListener("resize", renderTour);
   store.set("tourDone", true);
-  toast(skipped ? "Tour skipped, you can replay it from Juno anytime 👋" : "🎉 You're all set, welcome to JobReady AI!");
+  toast(skipped ? "Tour skipped, you can replay it from Juno anytime 👋" : "🎉 You're all set, welcome to JobTopper!");
 }
 
 /* ── Speech to text for Interview Mentor (robust live dictation) ── */
