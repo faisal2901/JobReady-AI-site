@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex, nofollow" />
-<title>JobReady AI — Admin Analytics</title>
+<title>JobTopper — Admin Analytics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
@@ -52,7 +52,7 @@ select{background:#0e0e20;border:1px solid var(--border);border-radius:9px;color
 <!-- Login gate -->
 <div class="gate" id="gate">
   <h2>🔐 Admin Analytics</h2>
-  <p>Enter your admin token to view JobReady AI usage. This page is private and not indexed.</p>
+  <p>Enter your admin token to view JobTopper usage. This page is private and not indexed.</p>
   <input type="password" id="tok" placeholder="Admin token" onkeydown="if(event.key==='Enter')load()" />
   <button class="btn" onclick="load()">View dashboard →</button>
   <div class="err" id="gateErr"></div>
@@ -60,7 +60,7 @@ select{background:#0e0e20;border:1px solid var(--border);border-radius:9px;color
 
 <!-- Dashboard -->
 <div id="dash" style="display:none">
-  <h1>JobReady AI — Admin Analytics</h1>
+  <h1>JobTopper — Admin Analytics</h1>
   <div class="sub" id="genAt"></div>
 
   <div class="toolbar">
@@ -190,7 +190,7 @@ function exportUsers() {
   const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = "jobready_users.csv"; a.click(); URL.revokeObjectURL(a.href);
+  a.download = "jobtopper_users.csv"; a.click(); URL.revokeObjectURL(a.href);
 }
 
 // Auto-load if a token is already remembered this session
