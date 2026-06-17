@@ -1,4 +1,4 @@
-// JobReady AI — live jobs endpoint (JSearch on RapidAPI: aggregates LinkedIn, Naukri, Indeed, Glassdoor, Shine…)
+// JobTopper — live jobs endpoint (JSearch on RapidAPI: aggregates LinkedIn, Naukri, Indeed, Glassdoor, Shine…)
 // GET /api/jobs?q=react+developer&location=Bengaluru&datePosted=today&page=1&remote=false&employmentType=FULLTIME
 
 function applyCors(req, res) {

@@ -1,4 +1,4 @@
-// JobReady AI — cross-device streak sync.
+// JobTopper — cross-device streak sync.
 // POST /api/streak  body: { email, today: "YYYY-MM-DD", streak, lastVisit }
 // Stores one record per account (keyed by email) in Upstash Redis, merges the
 // caller's local view with the stored value, and returns the authoritative streak.

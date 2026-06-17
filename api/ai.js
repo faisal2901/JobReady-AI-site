@@ -1,4 +1,4 @@
-// JobReady AI — unified AI endpoint (Gemini)
+// JobTopper — unified AI endpoint (Gemini)
 // POST /api/ai  body: { action, ...payload }
 // Actions: analyze | boost | tailor | coverletter | interview | salary | roadmap | motivation | support
 
@@ -349,9 +349,9 @@ Return JSON: {"coverLetter": "..."}`;
 
 /* ---------- interview ---------- */
 async function interview({ resume, jd, history, mode, role, end }) {
-  const sys = `You are the JobReady AI Interview Mentor, a world class interview coach who has sat on hiring panels at top tech companies and Indian unicorns. Mode: ${mode || "mixed"} (hr = behavioral/HR, tech = technical, mixed = both).
+  const sys = `You are the JobTopper Interview Mentor, a world class interview coach who has sat on hiring panels at top tech companies and Indian unicorns. Mode: ${mode || "mixed"} (hr = behavioral/HR, tech = technical, mixed = both).
 Rules:
-- First message of a session: say exactly "Hi! Welcome to JobReady AI. I'm your personal mentor." then one line about what you'll cover, then ask the FIRST question.
+- First message of a session: say exactly "Hi! Welcome to JobTopper. I'm your personal mentor." then one line about what you'll cover, then ask the FIRST question.
 - Ask ONE question at a time, calibrated precisely to the candidate's resume, target role, and seniority. Reference their actual projects, skills, and companies.
 - After each answer give structured feedback: ✅ What worked · ⚠️ What to improve · 💡 Model answer outline (STAR for behavioral, structured approach for technical) · 📊 Score: X/10. Then ask the next question, slightly harder if they scored well.
 - Mix question types realistically for the role.
@@ -418,13 +418,13 @@ Return JSON:
 async function motivation({ name, applied, streak }) {
   const sys = `You write one short, powerful daily motivation for an Indian job seeker. Mix grit and warmth. Occasionally reference Indian achievers (Kalam, Dhoni, Sudha Murty, etc.) naturally. Return JSON only.`;
   const usr = `Today's date: ${new Date().toISOString().slice(0, 10)}. ${name ? "Name: " + name + "." : ""} Applications so far: ${applied || 0}. Day streak: ${streak || 1}.
-Return JSON: {"quote": "1-2 sentence original motivational message", "tip": "one actionable job search tip for today", "author": "JobReady AI"}`;
+Return JSON: {"quote": "1-2 sentence original motivational message", "tip": "one actionable job search tip for today", "author": "JobTopper"}`;
   return geminiJSON({ system: sys, user: usr, temperature: 0.9, maxTokens: 512 });
 }
 
 /* ---------- support (Juno) ---------- */
 async function support({ history, question }) {
-  const sys = `You are Juno, the friendly JobReady AI helper bot. Answer questions about using the JobReady AI app, briefly and warmly (under 120 words). Use simple language. Introduce yourself as Juno if greeted.
+  const sys = `You are Juno, the friendly JobTopper helper bot. Answer questions about using the JobTopper app, briefly and warmly (under 120 words). Use simple language. Introduce yourself as Juno if greeted.
 APP KNOWLEDGE:
 - Features: Resume Analyzer with ATS score (upload PDF/DOCX/TXT on Analyzer tab), Boost Score button (rewrites resume truthfully and verifies the new score is higher before showing it), Tailor for a JD (paste JD, get tailored resume, download PDF/Word/TXT, cover letter), Job Openings (live jobs from LinkedIn/Naukri/Indeed/Glassdoor, filter by city and time, Apply redirects to the portal), Application Tracker (Saved/Viewed/Applied/Interview/Offer/Rejected), Interview Mentor (mock interviews based on your resume, End Interview gives a final report), Salary Intelligence (India INR figures), Career Roadmap, daily motivation and streak.
 - ATS score is stable: same resume and JD always gives the same score.

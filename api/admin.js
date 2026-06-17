@@ -1,4 +1,4 @@
-// JobReady AI — admin analytics (read-only, token protected).
+// JobTopper — admin analytics (read-only, token protected).
 // GET /api/admin?token=YOUR_ADMIN_TOKEN[&days=30]
 // Returns traffic, signups, logins/logouts, feature usage and the user roster.
 // Protect by setting ADMIN_TOKEN in Vercel → Settings → Environment Variables.
@@ -77,7 +77,10 @@ module.exports = async (req, res) => {
       redis(["GET", "stat:logout:all"]),
     ]);
 
-    // Feature usage: per-action counters written by the app via /api/track.
+    // Feature usage: reuse the AI daily counters (jrd:*) is per-IP, so instead we
+    // expose per-action usage if the app logged it. We read action counters keyed
+    // stat:feat:<action>:all written by the app via /api/track is optional; here we
+    // surface any that exist for a known action set.
     const FEATURES = ["analyze", "boost", "tailor", "coverletter", "jobs", "interview", "salary", "roadmap"];
     const featUsage = {};
     await Promise.all(FEATURES.map(async (f) => { featUsage[f] = num(await redis(["GET", `stat:feat:${f}:all`]).catch(() => 0)); }));

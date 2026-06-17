@@ -1,6 +1,6 @@
-// JobReady AI — analytics event logger.
-// POST /api/track  body: { event, email?, name?, feature? }
-//   event ∈ visit | signup | login | logout | feature
+// JobTopper — analytics event logger.
+// POST /api/track  body: { event, email?, name? }
+//   event ∈ visit | signup | login | logout
 // Records lightweight counters + a user roster in Upstash Redis so the owner can
 // see traffic, signups and logins from the admin dashboard. Privacy-minded:
 //   - visitor uniqueness is tracked by a hashed IP+UA per day (no raw IP stored)
