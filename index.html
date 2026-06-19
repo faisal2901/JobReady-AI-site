@@ -112,6 +112,11 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .refer-stats div{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center}
 .refer-stats b{font-size:22px;font-family:'Sora';display:block;color:var(--acc2)}
 .refer-stats span{font-size:11px;color:var(--mut)}
+.ref-hist{max-height:160px;overflow:auto}
+.ref-hist-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.ref-hist-row span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ref-status.ok{color:var(--good);font-size:12px;font-weight:600}
+.ref-date{font-size:11px;color:var(--dim)}
 /* Collapsed-sidebar motivation rail: gentle vertical text in the left gutter, only on desktop when collapsed */
 .motrail{position:fixed;left:0;top:0;bottom:0;width:60px;display:none;align-items:center;justify-content:center;z-index:5;pointer-events:none;opacity:0;transition:opacity .5s}
 body.scollapsed .motrail{display:flex;opacity:1}
