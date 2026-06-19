@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -90,41 +90,49 @@ function track(event, extra = {}) {
 /* ── Usage credits + referrals (server-authoritative via /api/points) ── */
 const TOOL_LABELS = { jobs: "Job Openings", analyze: "Resume Analyzer", tailor: "Tailor Resume", salary: "Salary Intel", roadmap: "Career Roadmap" };
 let pointsState = null; // last known status from server
+let creditInFlight = false; // guards against double-click double-spend
+function localDayStr() {
+  const d = new Date(); const t = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return t.toISOString().slice(0, 10);
+}
 async function pointsApi(action, extra = {}) {
   if (!user?.email) return null;
   try {
     const r = await fetch("/api/points", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-JR-App": "1" },
-      body: JSON.stringify({ action, email: user.email, name: user.name, ...extra }),
+      body: JSON.stringify({ action, email: user.email, name: user.name, day: localDayStr(), ...extra }),
     });
     return await r.json();
   } catch (_) { return null; }
 }
-function fmtReset(sec) {
-  if (!sec || sec <= 0) return "soon";
-  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
 function applyPointsState(s) {
-  if (!s) return;
+  if (!s || s.upstash === false) { pointsState = s || pointsState; renderCredits(); return; }
   pointsState = s;
   if (Array.isArray(s.notifications)) s.notifications.forEach((n) => setTimeout(() => toast(n), 400));
   renderCredits();
 }
 async function refreshPoints() { applyPointsState(await pointsApi("status")); }
-// Returns true if allowed (and consumes a use); false if out of credits (and shows prompt).
+
+// Gate a tool run. Returns true ONLY if a credit was genuinely consumed.
+// Prevents double-spend (in-flight lock) and never silently allows when out of credits.
 async function checkCredit(tool) {
-  if (!user?.email) return true; // login gate handles anonymous; points need an account
-  const s = await pointsApi("consume", { tool });
-  if (!s) return true; // network/infra issue → fail open, don't block the user
-  applyPointsState(s);
-  if (s.softFail) return true;
-  if (s.ok === false && s.reason === "no_credits") {
-    showOutOfCredits(tool, s.resetIn);
-    return false;
+  if (!user?.email) return true;            // anonymous handled by login gate
+  if (creditInFlight) { toast("⏳ One moment…"); return false; } // block rapid double-clicks
+  creditInFlight = true;
+  try {
+    const s = await pointsApi("consume", { tool });
+    // If the points service can't be reached at all, allow (don't hard-block on a network blip),
+    // but this is the ONLY fail-open path and it's a true outage, not "out of credits".
+    if (!s) return true;
+    if (s.upstash === false) { applyPointsState(s); return true; } // credits not configured → unlimited
+    if (s.softFail) return true;             // transient infra error
+    applyPointsState(s);
+    if (s.ok === false && s.reason === "no_credits") { showOutOfCredits(tool); return false; }
+    return s.ok === true;                     // only proceed if server confirms consumption
+  } finally {
+    creditInFlight = false;
   }
-  return true;
 }
 function referralLink() {
   const code = pointsState?.code || "";
@@ -136,33 +144,50 @@ function renderCredits() {
   if (!pointsState || pointsState.upstash === false) { box.innerHTML = ""; return; }
   const t = pointsState.tools || {};
   const rows = Object.keys(TOOL_LABELS).map((k) => {
-    const r = t[k] || { remaining: 0, resetIn: 0 };
+    const r = t[k] || { daily: 0, bonus: 0, remaining: 0, limit: 3 };
     const cls = r.remaining > 0 ? "cg" : "cr";
-    const sub = r.remaining > 0 ? `${r.remaining} left today` : `resets in ${fmtReset(r.resetIn)}`;
-    return `<div class="credit-row"><span>${TOOL_LABELS[k]}</span><span class="credit-pill ${cls}">${r.remaining}/${pointsState.limit}</span></div><div class="credit-sub">${sub}</div>`;
+    // Breakdown: "3 daily" + optional "+N referral"
+    const parts = [`${r.daily} daily`];
+    if (r.bonus > 0) parts.push(`+${r.bonus} referral`);
+    const sub = r.remaining > 0 ? parts.join(" ") : "used up — resets at midnight, or refer a friend";
+    return `<div class="credit-row"><span>${TOOL_LABELS[k]}</span><span class="credit-pill ${cls}">${r.remaining} left</span></div><div class="credit-sub">${sub}</div>`;
   }).join("");
-  box.innerHTML = `<h3>🎟️ Your daily credits</h3>
-    <div style="font-size:12px;color:var(--mut);margin:2px 0 12px">3 free uses per tool every 24 hours. Out of credits? Refer a friend for an instant top-up.</div>
+  box.innerHTML = `<h3>🎟️ Your free credits</h3>
+    <div style="font-size:12px;color:var(--mut);margin:2px 0 12px">3 free uses per tool each day, reset at midnight (your time). Refer a friend to instantly add 3 more per tool.</div>
     ${rows}
-    <button class="btn sm" style="margin-top:14px;width:100%" onclick="openRefer()">🎁 Refer & get free credits</button>`;
+    <button class="btn sm" style="margin-top:14px;width:100%" onclick="openRefer()">🎁 Refer &amp; get free credits</button>`;
 }
-function showOutOfCredits(tool, resetIn) {
+// Auto-detect: if referral bonus exists for this tool, offer to use it; else prompt to refer.
+function showOutOfCredits(tool) {
   const label = TOOL_LABELS[tool] || "this tool";
-  showCelebrate("🎟️", `Out of ${label} credits`, `You've used your 3 free ${label} runs for today. They reset in ${fmtReset(resetIn)}. Don't want to wait? Refer a friend and get an instant top-up the moment they sign up!`, false);
-  // swap the celebrate button to open the refer panel
-  const btn = $("celebrateBtn");
-  if (btn) { btn.textContent = "🎁 Refer a friend now"; btn.onclick = () => { closeCelebrate(); openRefer(); }; }
+  const bonus = pointsState?.tools?.[tool]?.bonus || 0;
+  if (bonus > 0) {
+    // Bonus credits exist but weren't auto-consumed (daily=0). Offer to spend one now.
+    showConfirm("🎟️", `Use a referral credit?`, `You're out of today's free ${label} credits, but you have ${bonus} referral credit${bonus > 1 ? "s" : ""} for it. Use one now?`,
+      "Yes, use 1 credit", async () => {
+        closeCelebrate();
+        const s = await pointsApi("consume", { tool });
+        applyPointsState(s);
+        if (s && s.ok) { toast(`✅ Used 1 referral credit. Tap the button again to run.`); }
+      }, "No, keep it");
+    return;
+  }
+  showConfirm("🎁", `Out of ${label} credits`, `You've used your 3 free ${label} credits for today. They reset at midnight (your local time). Don't want to wait? Refer 1 friend and instantly get 3 more credits for every tool, the moment they sign up.`,
+    "🎁 Refer a friend", () => { closeCelebrate(); openRefer(); }, "Maybe later");
 }
 function openRefer() {
-  // reset celebrate button behaviour in case it was repurposed
   const cb = $("celebrateBtn"); if (cb) { cb.textContent = "Let's keep going 🚀"; cb.onclick = closeCelebrate; }
   if (!user?.email) { openLogin(); return; }
-  const code = pointsState?.code || "…";
+  if (!pointsState) { refreshPoints(); }
   const link = referralLink();
   const count = pointsState?.referrals || 0;
   const toNext = 10 - (count % 10);
+  const list = pointsState?.referralList || [];
+  const historyRows = list.length
+    ? list.map((r) => `<div class="ref-hist-row"><span>${esc(r.name || "Friend")}</span><span class="ref-status ok">✅ joined</span><span class="ref-date">${esc(r.date || "")}</span></div>`).join("")
+    : `<div style="font-size:12.5px;color:var(--dim);padding:8px 0">No referrals yet. Share your link below, your friends will appear here once they sign up.</div>`;
   $("referBody").innerHTML = `
-    <p style="color:var(--mut);font-size:13.5px">Share your link. The moment a friend signs up, <b style="color:var(--good)">your credits are instantly topped up</b> for all tools, no waiting. Your friend also gets bonus credits for joining.</p>
+    <p style="color:var(--mut);font-size:13.5px">Share your link. The moment a friend signs up, <b style="color:var(--good)">+3 credits are added to every tool</b> instantly, no waiting. Your friend also gets bonus credits for joining.</p>
     <div class="refer-codebox"><span>${esc(link)}</span><button class="btn sm" onclick="navigator.clipboard.writeText('${esc(link)}');toast('📋 Link copied!')">Copy</button></div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <button class="btn sm good" onclick="shareReferral('whatsapp')">💬 WhatsApp</button>
@@ -170,8 +195,10 @@ function openRefer() {
     </div>
     <div class="refer-stats">
       <div><b>${count}</b><span>Friends referred</span></div>
-      <div><b>${toNext}</b><span>More for a 48h mega bonus</span></div>
+      <div><b>${toNext}</b><span>more for a 48h mega bonus</span></div>
     </div>
+    <h4 style="margin:16px 0 6px;font-size:14px">👥 Your referrals</h4>
+    <div class="ref-hist">${historyRows}</div>
     <p style="font-size:12px;color:var(--dim);margin-top:12px">🏆 Every 10 referrals unlocks a 48-hour mega bonus across all tools.</p>`;
   $("referModal").classList.add("show");
   $("sidebar").classList.remove("open");
@@ -1194,6 +1221,26 @@ function closeCelebrate() {
   $("celebrateModal").classList.remove("show");
   $("confetti").classList.remove("show");
   $("confetti").innerHTML = "";
+  // restore the default single-button celebrate footer
+  const extra = $("celebrateBtn2"); if (extra) extra.remove();
+  const cb = $("celebrateBtn"); if (cb) { cb.textContent = "Let's keep going 🚀"; cb.onclick = closeCelebrate; cb.style.display = ""; }
+}
+// Two-button confirm built on the celebrate modal (Yes / No).
+function showConfirm(icon, title, body, yesLabel, onYes, noLabel) {
+  $("celebrateIcon").textContent = icon;
+  $("celebrateTitle").textContent = title;
+  $("celebrateBody").textContent = body;
+  const cb = $("celebrateBtn");
+  cb.textContent = yesLabel; cb.onclick = onYes; cb.style.display = "";
+  let no = $("celebrateBtn2");
+  if (!no) {
+    no = document.createElement("button");
+    no.id = "celebrateBtn2"; no.className = "btn ghost"; no.style.marginLeft = "8px";
+    cb.parentNode.appendChild(no);
+  }
+  no.textContent = noLabel || "Close";
+  no.onclick = closeCelebrate;
+  $("celebrateModal").classList.add("show");
 }
 function burstConfetti() {
   const wrap = $("confetti");
@@ -1425,22 +1472,18 @@ function renderTour() {
   const pad = 6;
   const top = r.top - pad, left = r.left - pad, w = r.width + pad * 2, h = r.height + pad * 2;
   const W = window.innerWidth, H = window.innerHeight;
-  // ring
   const ring = $("tourRing");
   ring.style.top = top + "px"; ring.style.left = left + "px";
   ring.style.width = w + "px"; ring.style.height = h + "px";
-  // four dim panels around the hole
   $("tourDimTop").style.cssText = `top:0;left:0;width:100%;height:${Math.max(0, top)}px`;
   $("tourDimBottom").style.cssText = `top:${top + h}px;left:0;width:100%;height:${Math.max(0, H - top - h)}px`;
   $("tourDimLeft").style.cssText = `top:${top}px;left:0;width:${Math.max(0, left)}px;height:${h}px`;
   $("tourDimRight").style.cssText = `top:${top}px;left:${left + w}px;width:${Math.max(0, W - left - w)}px;height:${h}px`;
-  // content
   $("tourTitle").textContent = step.title;
   $("tourBody").textContent = step.body;
   $("tourBack").style.visibility = tourIdx === 0 ? "hidden" : "visible";
   $("tourNext").textContent = tourIdx === TOUR_STEPS.length - 1 ? "Finish ✓" : "Next →";
   Array.from($("tourDots").children).forEach((d, i) => d.classList.toggle("on", i === tourIdx));
-  // position popup: to the right of sidebar items, below top-right / above bottom-right targets
   const pop = $("tourPop");
   pop.style.visibility = "hidden";
   requestAnimationFrame(() => {
@@ -1448,15 +1491,15 @@ function renderTour() {
     let pTop, pLeft;
     const arrow = $("tourPopArrow");
     arrow.style.cssText = "";
-    if (left + w + 18 + pw < W) {              // place to the right
+    if (left + w + 18 + pw < W) {
       pLeft = left + w + 16;
       pTop = Math.min(Math.max(8, top), H - ph - 8);
       arrow.style.cssText = `left:-8px;top:18px;border-right:none;border-top:none`;
-    } else if (top + h + 16 + ph < H) {        // place below
+    } else if (top + h + 16 + ph < H) {
       pTop = top + h + 14;
       pLeft = Math.min(Math.max(8, left), W - pw - 8);
       arrow.style.cssText = `top:-8px;left:24px;border-bottom:none;border-right:none`;
-    } else {                                    // place above
+    } else {
       pTop = top - ph - 14;
       pLeft = Math.min(Math.max(8, left + w - pw), W - pw - 8);
       arrow.style.cssText = `bottom:-8px;left:24px;border-top:none;border-left:none`;
@@ -1475,12 +1518,12 @@ function endTour(skipped) {
 
 /* ── Speech to text for Interview Mentor (robust live dictation) ── */
 let recog = null;
-let micWanted = false;   // user intent: keep listening until they tap stop
-let micFinal = "";       // accumulated final transcript
-let micHeard = false;    // did we receive ANY result event
+let micWanted = false;
+let micFinal = "";
+let micHeard = false;
 let micWatchdog = null;
-let micStartedAt = 0;    // when the current recognition session started
-let micDeadRestarts = 0; // sessions that died instantly without hearing anything
+let micStartedAt = 0;
+let micDeadRestarts = 0;
 
 function micUI(on) {
   const b = $("ivMic");
@@ -1488,25 +1531,22 @@ function micUI(on) {
   else { b.classList.remove("rec"); b.textContent = "🎤"; }
 }
 
-// Light cleanup so dictated text reads naturally: trims, fixes spacing, and
-// capitalizes the first letter of the answer and after sentence breaks.
 function tidyDictation(s) {
   s = s.replace(/\s+/g, " ").trim();
   if (!s) return s;
-  s = s.replace(/\s+([,.!?;:])/g, "$1");          // no space before punctuation
-  s = s.replace(/([.!?])\s*([a-z])/g, (m, p, c) => p + " " + c.toUpperCase()); // capitalize new sentences
-  s = s.charAt(0).toUpperCase() + s.slice(1);     // capitalize first letter
+  s = s.replace(/\s+([,.!?;:])/g, "$1");
+  s = s.replace(/([.!?])\s*([a-z])/g, (m, p, c) => p + " " + c.toUpperCase());
+  s = s.charAt(0).toUpperCase() + s.slice(1);
   return s;
 }
 function buildRecognizer() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const r = new SR();
-  // Use the browser's UI language if it's English, else default to Indian English.
   const lang = (navigator.language && /^en/i.test(navigator.language)) ? navigator.language : "en-IN";
   r.lang = lang;
   r.continuous = true;
   r.interimResults = true;
-  r.maxAlternatives = 3; // let the engine consider more candidates → better picks
+  r.maxAlternatives = 3;
 
   r.onresult = (e) => {
     micHeard = true;
@@ -1515,7 +1555,6 @@ function buildRecognizer() {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const res = e.results[i];
-      // Pick the highest-confidence alternative among the candidates.
       let best = res[0];
       for (let a = 1; a < res.length; a++) {
         if ((res[a].confidence || 0) > (best.confidence || 0)) best = res[a];
@@ -1534,7 +1573,7 @@ function buildRecognizer() {
       micWanted = false; micUI(false);
       toast("🎤 Microphone is blocked. Click the lock icon in the address bar, allow Microphone, then try again.");
     } else if (e.error === "no-speech") {
-      // harmless: silence timeout. onend will fire and we auto-restart while micWanted.
+      // harmless silence timeout; onend will auto-restart while micWanted
     } else if (e.error === "network") {
       micWanted = false; micUI(false);
       toast("🎤 Speech service unreachable. Voice typing needs Google Chrome with internet. Please type instead.");
@@ -1543,10 +1582,6 @@ function buildRecognizer() {
     }
   };
 
-  // Chrome stops recognition automatically every ~30 to 60 seconds of audio or after silence.
-  // While the user still wants the mic on, transparently restart so dictation feels continuous.
-  // BUT: if sessions keep dying instantly without ever hearing anything, the speech service is
-  // blocked (Brave shields, privacy extensions, firewalls, some regions). Detect that and explain.
   r.onend = () => {
     if (micWanted) {
       const lived = Date.now() - micStartedAt;
@@ -1558,7 +1593,7 @@ function buildRecognizer() {
           return;
         }
       }
-      try { micStartedAt = Date.now(); recog = buildRecognizer(); recog.start(); return; } catch (_) { /* fall through */ }
+      try { micStartedAt = Date.now(); recog = buildRecognizer(); recog.start(); return; } catch (_) {}
     }
     micUI(false);
     micWanted = false;
@@ -1570,7 +1605,7 @@ async function toggleMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return toast("🎤 Voice typing works on Google Chrome and Microsoft Edge. Please type your answer here.");
 
-  if (micWanted) { // user taps stop
+  if (micWanted) {
     micWanted = false;
     try { recog && recog.stop(); } catch (_) {}
     micUI(false);
@@ -1578,11 +1613,10 @@ async function toggleMic() {
     return;
   }
 
-  // Ask for mic permission explicitly first, so we fail with a clear message instead of silence
   try {
     if (navigator.mediaDevices?.getUserMedia) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop()); // we only needed the permission
+      stream.getTracks().forEach((t) => t.stop());
     }
   } catch (err) {
     return toast("🎤 Please allow microphone access (click the lock icon near the address bar → Microphone → Allow), then tap the mic again.");
@@ -1598,7 +1632,6 @@ async function toggleMic() {
   micUI(true);
   toast("🎤 Listening… speak naturally, your words appear live. Tap ⏹ when done.");
 
-  // Watchdog: if nothing was transcribed within 7 seconds, guide the user
   clearTimeout(micWatchdog);
   micWatchdog = setTimeout(() => {
     if (micWanted && !micHeard) toast("🎤 I can't hear anything yet. Speak louder and closer, check the correct microphone is selected (browser lock icon → Site settings → Microphone). On Windows you can also press Win + H to dictate.");
