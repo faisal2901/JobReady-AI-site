@@ -56,7 +56,17 @@ const validDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 function codeFromUid(uid) { return (uid + "x").slice(0, 6).toUpperCase(); }
 async function ensureCode(uid) {
   let code = await redis(["GET", `jp:code:${uid}`]);
-  if (!code) { code = codeFromUid(uid); await redis(["SET", `jp:code:${uid}`, code]); await redis(["SET", `jp:codeowner:${code}`, uid]); }
+  if (!code) {
+    const base = codeFromUid(uid);
+    code = base;
+    for (let i = 0; i < 20; i++) {
+      const owner = await redis(["GET", `jp:codeowner:${code}`]);
+      if (!owner || owner === uid) break;
+      code = (base.slice(0, 5) + i.toString(36)).toUpperCase();
+    }
+    await redis(["SET", `jp:code:${uid}`, code]);
+    await redis(["SET", `jp:codeowner:${code}`, uid]);
+  }
   return code;
 }
 const useKey = (uid, tool, day) => `jp:use:${uid}:${tool}:${day}`;
@@ -78,7 +88,7 @@ async function fullStatus(uid, day) {
   let notifs = [];
   try { const raw = await redis(["GET", `jp:notif:${uid}`]); if (raw) notifs = JSON.parse(raw); } catch (_) {}
   if (notifs.length) await redis(["DEL", `jp:notif:${uid}`]);
-  return { ok: true, upstash: true, tools, code, referrals, referralList: refList, notifications: notifs, limit: DAILY_LIMIT };
+  return { ok: true, upstash: true, tools, code, referrals, referralList: refList, notifications: notifs, limit: DAILY_LIMIT, referralCreditsCarryOver: true, dailyCreditsCarryOver: false };
 }
 async function pushNotif(uid, msg) {
   let arr = []; try { const raw = await redis(["GET", `jp:notif:${uid}`]); if (raw) arr = JSON.parse(raw); } catch (_) {}
@@ -103,7 +113,7 @@ module.exports = async (req, res) => {
   // Without Upstash, report unavailable so the client can fail safe (it should NOT silently allow unlimited).
   if (!HAS_UPSTASH) {
     const tools = {}; TOOLS.forEach((t) => tools[t] = { daily: DAILY_LIMIT, bonus: 0, remaining: DAILY_LIMIT, limit: DAILY_LIMIT });
-    return res.status(200).json({ ok: true, upstash: false, tools, code: "", referrals: 0, referralList: [], notifications: [], limit: DAILY_LIMIT });
+    return res.status(200).json({ ok: true, upstash: false, tools, code: "", referrals: 0, referralList: [], notifications: [], limit: DAILY_LIMIT, referralCreditsCarryOver: true, dailyCreditsCarryOver: false });
   }
 
   if (await tooFast(ipOf(req))) return res.status(429).json({ ok: false, error: "Too many requests, slow down." });
