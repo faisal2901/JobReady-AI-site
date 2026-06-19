@@ -5,7 +5,8 @@
     "api/health.js": { "maxDuration": 60 },
     "api/streak.js": { "maxDuration": 15 },
     "api/track.js": { "maxDuration": 10 },
-    "api/admin.js": { "maxDuration": 15 }
+    "api/admin.js": { "maxDuration": 15 },
+    "api/points.js": { "maxDuration": 12 }
   },
   "headers": [
     {
