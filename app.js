@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -87,6 +87,104 @@ function track(event, extra = {}) {
   } catch (_) { /* analytics must never affect the user */ }
 }
 
+/* ── Usage credits + referrals (server-authoritative via /api/points) ── */
+const TOOL_LABELS = { jobs: "Job Openings", analyze: "Resume Analyzer", tailor: "Tailor Resume", salary: "Salary Intel", roadmap: "Career Roadmap" };
+let pointsState = null; // last known status from server
+async function pointsApi(action, extra = {}) {
+  if (!user?.email) return null;
+  try {
+    const r = await fetch("/api/points", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-JR-App": "1" },
+      body: JSON.stringify({ action, email: user.email, name: user.name, ...extra }),
+    });
+    return await r.json();
+  } catch (_) { return null; }
+}
+function fmtReset(sec) {
+  if (!sec || sec <= 0) return "soon";
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function applyPointsState(s) {
+  if (!s) return;
+  pointsState = s;
+  if (Array.isArray(s.notifications)) s.notifications.forEach((n) => setTimeout(() => toast(n), 400));
+  renderCredits();
+}
+async function refreshPoints() { applyPointsState(await pointsApi("status")); }
+// Returns true if allowed (and consumes a use); false if out of credits (and shows prompt).
+async function checkCredit(tool) {
+  if (!user?.email) return true; // login gate handles anonymous; points need an account
+  const s = await pointsApi("consume", { tool });
+  if (!s) return true; // network/infra issue → fail open, don't block the user
+  applyPointsState(s);
+  if (s.softFail) return true;
+  if (s.ok === false && s.reason === "no_credits") {
+    showOutOfCredits(tool, s.resetIn);
+    return false;
+  }
+  return true;
+}
+function referralLink() {
+  const code = pointsState?.code || "";
+  return location.origin + "/?ref=" + code;
+}
+function renderCredits() {
+  const box = $("creditsBox");
+  if (!box) return;
+  if (!pointsState || pointsState.upstash === false) { box.innerHTML = ""; return; }
+  const t = pointsState.tools || {};
+  const rows = Object.keys(TOOL_LABELS).map((k) => {
+    const r = t[k] || { remaining: 0, resetIn: 0 };
+    const cls = r.remaining > 0 ? "cg" : "cr";
+    const sub = r.remaining > 0 ? `${r.remaining} left today` : `resets in ${fmtReset(r.resetIn)}`;
+    return `<div class="credit-row"><span>${TOOL_LABELS[k]}</span><span class="credit-pill ${cls}">${r.remaining}/${pointsState.limit}</span></div><div class="credit-sub">${sub}</div>`;
+  }).join("");
+  box.innerHTML = `<h3>🎟️ Your daily credits</h3>
+    <div style="font-size:12px;color:var(--mut);margin:2px 0 12px">3 free uses per tool every 24 hours. Out of credits? Refer a friend for an instant top-up.</div>
+    ${rows}
+    <button class="btn sm" style="margin-top:14px;width:100%" onclick="openRefer()">🎁 Refer & get free credits</button>`;
+}
+function showOutOfCredits(tool, resetIn) {
+  const label = TOOL_LABELS[tool] || "this tool";
+  showCelebrate("🎟️", `Out of ${label} credits`, `You've used your 3 free ${label} runs for today. They reset in ${fmtReset(resetIn)}. Don't want to wait? Refer a friend and get an instant top-up the moment they sign up!`, false);
+  // swap the celebrate button to open the refer panel
+  const btn = $("celebrateBtn");
+  if (btn) { btn.textContent = "🎁 Refer a friend now"; btn.onclick = () => { closeCelebrate(); openRefer(); }; }
+}
+function openRefer() {
+  // reset celebrate button behaviour in case it was repurposed
+  const cb = $("celebrateBtn"); if (cb) { cb.textContent = "Let's keep going 🚀"; cb.onclick = closeCelebrate; }
+  if (!user?.email) { openLogin(); return; }
+  const code = pointsState?.code || "…";
+  const link = referralLink();
+  const count = pointsState?.referrals || 0;
+  const toNext = 10 - (count % 10);
+  $("referBody").innerHTML = `
+    <p style="color:var(--mut);font-size:13.5px">Share your link. The moment a friend signs up, <b style="color:var(--good)">your credits are instantly topped up</b> for all tools, no waiting. Your friend also gets bonus credits for joining.</p>
+    <div class="refer-codebox"><span>${esc(link)}</span><button class="btn sm" onclick="navigator.clipboard.writeText('${esc(link)}');toast('📋 Link copied!')">Copy</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn sm good" onclick="shareReferral('whatsapp')">💬 WhatsApp</button>
+      <button class="btn sm ghost" onclick="shareReferral('any')">🔗 Share</button>
+    </div>
+    <div class="refer-stats">
+      <div><b>${count}</b><span>Friends referred</span></div>
+      <div><b>${toNext}</b><span>More for a 48h mega bonus</span></div>
+    </div>
+    <p style="font-size:12px;color:var(--dim);margin-top:12px">🏆 Every 10 referrals unlocks a 48-hour mega bonus across all tools.</p>`;
+  $("referModal").classList.add("show");
+  $("sidebar").classList.remove("open");
+}
+function closeRefer() { $("referModal").classList.remove("show"); }
+function shareReferral(via) {
+  const link = referralLink();
+  const msg = `🚀 I'm using JobTopper, a free AI career companion (resume ATS score, JD tailoring, interview practice, live jobs & more). Sign up with my link and we both get bonus credits: ${link}`;
+  if (via === "whatsapp") { window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank"); return; }
+  if (navigator.share) { navigator.share({ title: "JobTopper", text: msg, url: link }).catch(() => {}); }
+  else { navigator.clipboard.writeText(link); toast("📋 Link copied, share it anywhere!"); }
+}
+
 /* ── Fun rotating loaders & friendly errors ── */
 let loaderTimer = null;
 function loadBox(messages, subText) {
@@ -129,9 +227,39 @@ function busyBtn(btn, on, label) { const b = $(btn); if (!b) return; b.disabled 
 /* ── Sidebar toggle (works on desktop and mobile) ── */
 function toggleSidebar() {
   if (window.innerWidth <= 920) $("sidebar").classList.toggle("open");
-  else document.body.classList.toggle("scollapsed");
+  else { document.body.classList.toggle("scollapsed"); updateMotRail(); }
 }
 $("hamb").addEventListener("click", toggleSidebar);
+
+/* ── Collapsed-sidebar motivation rail (subtle, non-distracting) ── */
+const RAIL_LINES = [
+  "Keep going, your dream job is closer than you think",
+  "One application a day keeps unemployment away",
+  "Small steps, big careers",
+  "Consistency beats talent",
+  "Today's effort is tomorrow's offer letter",
+  "Stay ready so you don't have to get ready",
+  "Every expert was once a beginner",
+  "Your next yes is worth a hundred no's",
+];
+let railTimer = null;
+function updateMotRail() {
+  const collapsed = document.body.classList.contains("scollapsed");
+  const el = $("motRailText");
+  if (!el) return;
+  if (collapsed) {
+    const show = () => {
+      el.style.opacity = 0;
+      setTimeout(() => { el.textContent = RAIL_LINES[Math.floor(Math.random() * RAIL_LINES.length)]; el.style.opacity = 1; }, 500);
+    };
+    el.textContent = RAIL_LINES[Math.floor(Math.random() * RAIL_LINES.length)];
+    el.style.opacity = 1;
+    clearInterval(railTimer);
+    railTimer = setInterval(show, 6000); // gentle rotation, not flashy
+  } else {
+    clearInterval(railTimer); railTimer = null;
+  }
+}
 
 /* ── AUTH with per-user vaults ── */
 const DATA_KEYS_PREFIX = "jr_";
@@ -199,6 +327,12 @@ function completeLogin(u) {
   // Analytics: a brand-new email = signup, otherwise a login.
   track(store.get("registered_" + hashStr(u.email.toLowerCase()), false) ? "login" : "signup", { email: u.email, name: u.name });
   store.set("registered_" + hashStr(u.email.toLowerCase()), true);
+  // Register with the points service and apply any referral code captured from the URL.
+  // signup credits the referrer + the new friend; status fetch loads the credit balance.
+  pointsApi("signup", { ref: store.get("pendingRef", "") }).then((s) => {
+    store.del("pendingRef");
+    applyPointsState(s);
+  });
   calcStreak();
   closeLogin(); renderAuth(); renderDashboard();
   const first = u.name.split(" ")[0];
@@ -354,6 +488,7 @@ async function runAnalyze(force) {
     toast("🔒 Same resume and JD, so here is your locked score. Edit the text to re-score.");
     return;
   }
+  if (!(await checkCredit("analyze"))) return;
   busyBtn("analyzeBtn", true);
   $("analyzeOut").innerHTML = loadBox([
     "☕ Grab a chai while our AI reads every single word…",
@@ -575,6 +710,8 @@ async function runTailor() {
   if (requireLogin() || needResume()) return;
   const jd = $("tJd").value.trim();
   if (jd.length < 50) return toast("⚠️ Paste the Job Description first");
+  if (!(await checkCredit("tailor"))) return;
+  store.set("used_tailor", true);
   busyBtn("tailorBtn", true);
   $("tailorOut").innerHTML = loadBox([
     "✂️ Reading the JD like a hiring manager…",
@@ -621,7 +758,11 @@ async function searchJobs(page) {
   if (requireLogin()) return;
   const q = $("jQ").value.trim();
   if (!q) return toast("⚠️ Enter a role or keywords");
-  if (page === 1) track("feature", { feature: "jobs" });
+  // Only a brand-new search costs a credit; "Load more" pagination is free.
+  if (page === 1) {
+    if (!(await checkCredit("jobs"))) return;
+    track("feature", { feature: "jobs" });
+  }
   busyBtn("jobsBtn", true);
   if (page === 1) {
     $("jobsOut").innerHTML = loadBox([
@@ -732,6 +873,7 @@ function mentorStatus(text) {
 }
 async function startInterview() {
   if (requireLogin()) return;
+  store.set("used_interview", true);
   ivHistory = []; ivActive = true;
   $("ivMsgs").innerHTML = "";
   $("ivEndBtn").style.display = "inline-flex";
@@ -742,6 +884,14 @@ async function sendInterview() {
   const txt = $("ivInp").value.trim();
   if (!txt) return;
   if (!ivActive) return toast("⚠️ Click Start New Session first");
+  // Stop any active voice capture and fully reset the transcript buffer, so the
+  // previous answer's dictated text never carries over into the next message.
+  if (typeof micWanted !== "undefined" && micWanted) {
+    micWanted = false;
+    try { recog && recog.stop(); } catch (_) {}
+    if (typeof micUI === "function") micUI(false);
+  }
+  micFinal = "";
   $("ivInp").value = "";
   pushMsg("user", txt);
   ivHistory.push({ role: "user", text: txt });
@@ -789,9 +939,11 @@ async function runSalary(force) {
   if (requireLogin()) return;
   const role = $("sRole").value.trim();
   if (!role) return toast("⚠️ Enter a role");
+  store.set("used_salary", true);
   const key = "sal_" + hashStr([role, $("sCity").value, $("sYears").value, $("sSkills").value].join("|").toLowerCase().replace(/\s+/g, " "));
   const cached = store.get(key, null);
   if (cached && !force) { renderSalary(role, cached, key); toast("🔒 Same inputs, so here are your locked figures."); return; }
+  if (!(await checkCredit("salary"))) return;
   busyBtn("salaryBtn", true);
   $("salaryOut").innerHTML = loadBox([
     "💰 Crunching Indian market compensation data…",
@@ -834,9 +986,11 @@ async function runRoadmap(force) {
   if (requireLogin()) return;
   const target = $("rTarget").value.trim();
   if (!target) return toast("⚠️ Enter your target role");
+  store.set("used_roadmap", true);
   const key = "rm_" + hashStr([target, $("rCurrent").value, $("rTimeline").value, resumeText.slice(0, 4000)].join("|").toLowerCase().replace(/\s+/g, " "));
   const cached = store.get(key, null);
   if (cached && !force) { renderRoadmap(cached, key); toast("🔒 Same inputs, so here is your locked roadmap."); return; }
+  if (!(await checkCredit("roadmap"))) return;
   busyBtn("roadmapBtn", true);
   $("roadmapOut").innerHTML = loadBox([
     "🗺️ Reading your resume gap by gap…",
@@ -938,12 +1092,21 @@ function celebrateMilestone(streak) {
   store.set(seenKey, true);
   setTimeout(() => showCelebrate(m.icon, m.title, m.body, true), 800);
 }
-// Advance the streak for "today" given the last visit date. Pure, reusable for
-// both local state and merging the value coming back from the cloud.
+// Calendar-day difference between two YYYY-MM-DD strings.
+function dayGap(a, b) {
+  const da = Date.parse(a + "T00:00:00"), db = Date.parse(b + "T00:00:00");
+  if (isNaN(da) || isNaN(db)) return null;
+  return Math.round((db - da) / 864e5);
+}
+// Advance the streak for "today" with a forgiving grace window that mirrors the
+// server, so a daily user is never reset by timezone slop or one missed day.
 function bumpStreak(streak, last, today) {
-  if (last === today) return streak; // already counted today
-  const y = localDay(new Date(Date.now() - 864e5));
-  return last === y ? streak + 1 : 1; // consecutive day → +1, otherwise reset
+  if (!last) return Math.max(1, streak);
+  if (last === today) return Math.max(1, streak);
+  const diff = dayGap(last, today);
+  if (diff === null || diff <= 0) return Math.max(1, streak); // skew/older date, keep
+  if (diff === 1 || diff === 2) return Math.max(1, streak) + 1; // next day or 1 grace day
+  return 1; // 3+ days genuinely missed
 }
 function calcStreak() {
   if (!user) return 0; // streaks belong to an account, anonymous visitors don't accrue
@@ -968,6 +1131,56 @@ function calcStreak() {
   syncStreakCloud();
   return streak;
 }
+
+/* ── Info modal: Why we built this / Privacy / Terms ── */
+const INFO_CONTENT = {
+  why: {
+    title: "💡 Why we built JobTopper",
+    body: `<p>Job hunting in India is overwhelming. Great candidates get filtered out by ATS systems, generic resumes, and a lack of guidance.</p>
+      <p style="margin-top:10px">JobTopper was built to level the field, giving every job seeker a free, AI-powered companion: an honest ATS score, a resume that's truly tailored to each job, fresh openings, realistic salary insight, interview practice, and a clear roadmap.</p>
+      <p style="margin-top:10px">Our goal is simple, help you become the <b>topper</b> of your job hunt, and get hired faster.</p>`,
+  },
+  privacy: {
+    title: "🔒 Privacy Policy",
+    body: `<p>Your trust matters. Here's how we handle your data, in plain language:</p>
+      <ul style="margin:10px 0 0 18px">
+        <li style="margin-bottom:6px">Your resume is parsed in your browser and stored locally on your device. We do not sell your data.</li>
+        <li style="margin-bottom:6px">When you use an AI tool, the relevant text is sent securely to our AI provider only to generate your result.</li>
+        <li style="margin-bottom:6px">We keep basic account info (name, email) and anonymous usage counts to run and improve the service.</li>
+        <li style="margin-bottom:6px">You can stop using the service anytime; signing out keeps your data on your device.</li>
+      </ul>
+      <p style="margin-top:10px">Questions? Reach us on WhatsApp or LinkedIn from the menu.</p>`,
+  },
+  terms: {
+    title: "📄 Terms & Conditions",
+    body: `<p>By using JobTopper you agree to the following:</p>
+      <ul style="margin:10px 0 0 18px">
+        <li style="margin-bottom:6px">JobTopper provides AI-generated guidance and estimates. Always review and verify before relying on them.</li>
+        <li style="margin-bottom:6px">All resume content must be truthful, you are responsible for what you submit and send to employers.</li>
+        <li style="margin-bottom:6px">Free usage may be limited per day to keep the service available for everyone.</li>
+        <li style="margin-bottom:6px">The service is provided "as is" without warranty. We are not liable for hiring outcomes.</li>
+      </ul>
+      <p style="margin-top:10px">We may update these terms as the product grows.</p>`,
+  },
+};
+function openInfo(key) {
+  const c = INFO_CONTENT[key]; if (!c) return;
+  $("infoTitle").textContent = c.title;
+  $("infoBody").innerHTML = c.body;
+  $("infoModal").classList.add("show");
+  $("sidebar").classList.remove("open");
+}
+function closeInfo() { $("infoModal").classList.remove("show"); }
+
+/* ── 'Coming soon' announcement bar ── */
+function dismissAnnounce() {
+  const el = $("announceBar");
+  if (el) el.classList.add("hide");
+  try { sessionStorage.setItem("jr_announce_hidden", "1"); } catch (_) {}
+}
+(function initAnnounce() {
+  try { if (sessionStorage.getItem("jr_announce_hidden")) { const el = document.getElementById("announceBar"); if (el) el.classList.add("hide"); } } catch (_) {}
+})();
 
 /* ── Celebration modal + confetti ── */
 function showCelebrate(icon, title, body, confetti) {
@@ -1017,9 +1230,15 @@ async function syncStreakCloud() {
     }, 1, 12000);
     if (r && typeof r.streak === "number") {
       const before = store.get("streak", 1);
-      store.set("streak", r.streak);
+      // Safety guard: never let a sync silently DROP a healthy streak. Only accept
+      // a lower value if the user genuinely hasn't visited for 3+ days (real reset).
+      const lastV = store.get("lastVisit", today);
+      const gap = dayGap(lastV, today);
+      const genuineReset = gap !== null && gap >= 3;
+      const next = (r.streak < before && !genuineReset) ? before : r.streak;
+      store.set("streak", next);
       if (r.lastVisit) store.set("lastVisit", r.lastVisit);
-      if (r.streak !== before) { celebrateMilestone(r.streak); renderDashboard(); }
+      if (next !== before) { celebrateMilestone(next); renderDashboard(); }
     }
   } catch (_) {
     // Offline or backend not configured: local streak still works, just no cross-device sync.
@@ -1027,20 +1246,47 @@ async function syncStreakCloud() {
     streakSyncing = false;
   }
 }
-const FALLBACK_QUOTES = [
-  { quote: "Don't watch the clock; do what it does. Keep going.", tip: "Apply to 3 fresh roles today before lunch.", author: "JobTopper" },
-  { quote: "Rejection is redirection. Every no is data, not defeat.", tip: "Re-read one rejected JD and update one resume bullet to match it.", author: "JobTopper" },
-  { quote: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action. (APJ Abdul Kalam)", tip: "Practice one interview answer out loud today.", author: "JobTopper" },
-];
+// Time-of-day bucket so tips/greetings never feel wrong (no "before lunch" at night).
+function partOfDay(h = new Date().getHours()) {
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  if (h < 21) return "evening";
+  return "night";
+}
+// Fallback quotes grouped by time of day so the action always fits the moment.
+const FALLBACK_BY_TIME = {
+  morning: [
+    { quote: "Win the morning, win the day.", tip: "Apply to 3 fresh roles before lunch.", author: "JobTopper" },
+    { quote: "Small steps every morning build big careers.", tip: "Run your resume through the ATS Analyzer now.", author: "JobTopper" },
+  ],
+  afternoon: [
+    { quote: "Keep the momentum going through the afternoon.", tip: "Tailor your resume to one job you like.", author: "JobTopper" },
+    { quote: "Consistency beats intensity.", tip: "Reach out to one person on LinkedIn today.", author: "JobTopper" },
+  ],
+  evening: [
+    { quote: "Finish strong, the day isn't over.", tip: "Practice one interview question with the Mentor.", author: "JobTopper" },
+    { quote: "Every evening of effort compounds.", tip: "Save 2 roles to apply to tomorrow.", author: "JobTopper" },
+  ],
+  night: [
+    { quote: "Rest well, tomorrow is another chance to shine.", tip: "Line up tomorrow's applications before bed.", author: "JobTopper" },
+    { quote: "Plan tonight, win tomorrow.", tip: "Review one job description so you're ready in the morning.", author: "JobTopper" },
+  ],
+};
+function pickFallback() {
+  const pool = FALLBACK_BY_TIME[partOfDay()];
+  return pool[new Date().getDate() % pool.length];
+}
 async function loadMotivation() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
+  const tod = partOfDay();
   const cached = store.get("motiv", null);
-  if (cached && cached.date === today) return renderMotivation(cached.data);
-  renderMotivation(FALLBACK_QUOTES[new Date().getDate() % FALLBACK_QUOTES.length]);
+  // Cache per day AND per time-of-day so it refreshes as the day progresses and stays fresh daily.
+  if (cached && cached.date === today && cached.tod === tod) return renderMotivation(cached.data);
+  renderMotivation(pickFallback());
   try {
     const applied = tracker.filter((t) => !["Saved", "Viewed"].includes(t.status)).length;
-    const { data } = await aiCall("motivation", { name: user?.name, applied, streak: store.get("streak", 1) }, 0);
-    store.set("motiv", { date: today, data });
+    const { data } = await aiCall("motivation", { name: user?.name, applied, streak: store.get("streak", 1), timeOfDay: tod }, 0);
+    store.set("motiv", { date: today, tod, data });
     renderMotivation(data);
   } catch (_) { /* fallback already shown */ }
 }
@@ -1053,18 +1299,29 @@ function renderDashboard() {
   $("dInterviews").textContent = tracker.filter((t) => ["Interview", "Offer"].includes(t.status)).length;
   $("dStreak").textContent = user ? store.get("streak", 1) : "—";
   renderChallenge();
+  // Build next steps from the user's ACTUAL progress, in a sensible priority order.
   const hasResume = resumeText.trim().length > 100;
+  const usedTailor = store.get("used_tailor", false);
+  const usedRoadmap = store.get("used_roadmap", false);
+  const usedInterview = store.get("used_interview", false);
+  const usedSalary = store.get("used_salary", false);
+  const applied = tracker.filter((t) => ["Applied", "Interview", "Offer"].includes(t.status)).length;
   const steps = [];
-  if (!hasResume) steps.push(["📄 Upload your resume", "analyzer"]);
+  if (!hasResume) steps.push(["📄 Upload your resume to get started", "analyzer"]);
   else if (!lastAnalysis) steps.push(["🔍 Run your first ATS analysis", "analyzer"]);
-  else if (lastAnalysis.atsScore < 90) steps.push(["🚀 Boost your ATS score (currently " + lastAnalysis.atsScore + ")", "analyzer"]);
+  else if (lastAnalysis.atsScore < 90) steps.push([`🚀 Boost your ATS score (now ${lastAnalysis.atsScore}, aim for 90+)`, "analyzer"]);
+  if (hasResume && !usedTailor) steps.push(["✂️ Tailor your resume to a specific job", "tailor"]);
   if (!tracker.length) steps.push(["💼 Find jobs posted in the last 24 hours", "jobs"]);
-  if (tracker.length && !tracker.some((t) => t.status === "Interview")) steps.push(["🎙️ Practice with your Interview Mentor", "interview"]);
-  steps.push(["🗺️ Build your career roadmap", "roadmap"]);
+  else if (!applied) steps.push(["📨 Apply to a saved job and mark it Applied", "tracker"]);
+  if (hasResume && !usedInterview) steps.push(["🎙️ Practice a mock interview", "interview"]);
+  if (!usedSalary) steps.push(["💰 Check your market salary range", "salary"]);
+  if (hasResume && !usedRoadmap) steps.push(["🗺️ Build your personalized career roadmap", "roadmap"]);
+  if (!steps.length) steps.push(["🎯 You're on track! Find fresh jobs to apply to", "jobs"]);
   $("nextSteps").innerHTML = steps.slice(0, 4).map(([s, v]) => `<div style="padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="go('${v}')">${s} <span style="float:right;color:var(--acc2)">→</span></div>`).join("");
   const h = new Date().getHours();
   const who = user ? ", " + user.name.split(" ")[0] : "";
-  $("greet").textContent = (h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening") + who + "! 👋";
+  const greet = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : h < 21 ? "Good evening" : "Burning the midnight oil";
+  $("greet").textContent = greet + who + "! 👋";
 }
 
 /* ── 30-Day Job Streak Challenge ── */
@@ -1094,7 +1351,7 @@ function renderChallenge() {
     <h3>🏆 The 30-Day Job Streak Challenge <span class="badge y">Day ${Math.min(streak, 30)} of 30</span></h3>
     <p style="font-size:13.5px;color:var(--mut);margin-top:4px">Visit every single day and work on your job hunt. Complete 30 days without breaking the chain and get <b style="color:var(--warn)">one paid course of your choice, free</b>. Miss a day and the streak resets, so guard it like your dream job depends on it!</p>
     <div class="ch-track"><div class="fill" style="width:${pct}%"></div>
-      ${MILESTONES.map((m) => { const pos = (m.day / 30) * 100; const edge = pos >= 99 ? " edge-end" : pos <= 1 ? " edge-start" : ""; return `<div class="ch-ms${streak >= m.day ? " hit" : ""}${edge}" style="left:${pos}%">${m.icon}<span>${m.label} · Day ${m.day}</span></div>`; }).join("")}
+      ${MILESTONES.map((m) => { const pos = (m.day / 30) * 100; const edge = pos >= 99 ? " edge-end" : pos <= 1 ? " edge-start" : ""; return `<div class="ch-ms${streak >= m.day ? " hit" : ""}${edge}" style="left:${pos}%">${m.icon}<span><b class="ms-word">${m.label}</b><b class="ms-day">Day ${m.day}</b></span></div>`; }).join("")}
     </div>
     ${done
       ? `<a class="btn gold" href="${claimMail}">🎁 Claim my free course now</a> <span style="font-size:12px;color:var(--dim);margin-left:8px">We'll reply with access to the course you pick.</span>`
@@ -1110,6 +1367,13 @@ function renderChallenge() {
   calcStreak();
   renderDashboard();
   loadMotivation();
+  // Capture a referral code from the URL (?ref=CODE) and remember it until signup.
+  try {
+    const ref = new URLSearchParams(location.search).get("ref");
+    if (ref) store.set("pendingRef", ref.trim().toUpperCase().slice(0, 12));
+  } catch (_) {}
+  // If already signed in, load the credit balance now.
+  if (user?.email) refreshPoints();
   // Analytics: count one page visit per session (avoids double-counting reloads).
   if (!sessionStorage.getItem("jr_visited")) { sessionStorage.setItem("jr_visited", "1"); track("visit"); }
 })();
@@ -1224,13 +1488,25 @@ function micUI(on) {
   else { b.classList.remove("rec"); b.textContent = "🎤"; }
 }
 
+// Light cleanup so dictated text reads naturally: trims, fixes spacing, and
+// capitalizes the first letter of the answer and after sentence breaks.
+function tidyDictation(s) {
+  s = s.replace(/\s+/g, " ").trim();
+  if (!s) return s;
+  s = s.replace(/\s+([,.!?;:])/g, "$1");          // no space before punctuation
+  s = s.replace(/([.!?])\s*([a-z])/g, (m, p, c) => p + " " + c.toUpperCase()); // capitalize new sentences
+  s = s.charAt(0).toUpperCase() + s.slice(1);     // capitalize first letter
+  return s;
+}
 function buildRecognizer() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const r = new SR();
-  r.lang = "en-IN";
+  // Use the browser's UI language if it's English, else default to Indian English.
+  const lang = (navigator.language && /^en/i.test(navigator.language)) ? navigator.language : "en-IN";
+  r.lang = lang;
   r.continuous = true;
   r.interimResults = true;
-  r.maxAlternatives = 1;
+  r.maxAlternatives = 3; // let the engine consider more candidates → better picks
 
   r.onresult = (e) => {
     micHeard = true;
@@ -1238,12 +1514,18 @@ function buildRecognizer() {
     clearTimeout(micWatchdog);
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) micFinal += t.trim() + " ";
+      const res = e.results[i];
+      // Pick the highest-confidence alternative among the candidates.
+      let best = res[0];
+      for (let a = 1; a < res.length; a++) {
+        if ((res[a].confidence || 0) > (best.confidence || 0)) best = res[a];
+      }
+      const t = best.transcript;
+      if (res.isFinal) micFinal += t.trim() + " ";
       else interim += t;
     }
     const box = $("ivInp");
-    box.value = (micFinal + interim).replace(/\s+/g, " ").trimStart();
+    box.value = tidyDictation(micFinal + interim);
     box.scrollTop = box.scrollHeight;
   };
 
