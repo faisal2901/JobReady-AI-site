@@ -20,10 +20,13 @@
   --acc:#7c5cff; --acc2:#a78bfa; --pink:#f472b6; --cyan:#22d3ee;
   --good:#34d399; --warn:#fbbf24; --bad:#f87171;
   --grad:linear-gradient(135deg,#2563eb 0%,#7c3aed 45%,#a855f7 75%,#f472b6 100%);
+  --sidebar-w:246px; --rail-w:218px; --rail-gap:14px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;overflow-x:hidden}
+img,svg,canvas,video{max-width:100%}
+button,input,textarea,select{max-width:100%}
 h1,h2,h3,.brand{font-family:'Sora',sans-serif}
 ::selection{background:rgba(124,92,255,.4)}
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#2d2d52;border-radius:6px}::-webkit-scrollbar-track{background:transparent}
@@ -53,7 +56,7 @@ h1,h2,h3,.brand{font-family:'Sora',sans-serif}
 .app{display:flex;min-height:100vh;position:relative;z-index:1}
 
 /* ── Sidebar ── */
-.sidebar{width:246px;background:rgba(13,13,28,.85);backdrop-filter:blur(18px);border-right:1px solid var(--border);position:fixed;inset:0 auto 0 0;display:flex;flex-direction:column;padding:20px 14px;z-index:50;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar{width:var(--sidebar-w);background:rgba(13,13,28,.85);backdrop-filter:blur(18px);border-right:1px solid var(--border);position:fixed;inset:0 auto 0 0;display:flex;flex-direction:column;padding:20px 14px;z-index:50;transition:transform .3s cubic-bezier(.4,0,.2,1)}
 body.scollapsed .sidebar{transform:translateX(-100%)}
 .brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;padding:0 4px 18px}
 .brand>div:nth-of-type(1){flex:1;min-width:0;white-space:nowrap;line-height:1.15;overflow:hidden;text-overflow:ellipsis}
@@ -74,34 +77,40 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .nav a.active .nico{stroke:#c4b5fd}
 .nico{width:19px;height:19px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .nav .sep{font-size:10.5px;letter-spacing:1.6px;color:var(--dim);padding:14px 12px 5px;font-weight:600}
-.side-foot{padding:14px 10px 0;font-size:11.5px;color:var(--dim);border-top:1px solid var(--border);line-height:1.8}
+.side-foot{font-size:11.5px;color:var(--dim);line-height:1.8}
+.sidebar .side-foot{display:none}
 .side-foot a{color:var(--acc2);text-decoration:none;font-weight:600}
 .side-foot a:hover{text-decoration:underline}
 .foot-connect{font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase}
-.foot-social{display:flex;gap:8px;margin-bottom:12px}
+.foot-social{display:flex;gap:8px;flex-wrap:wrap}
 .foot-social a{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--card2);border:1px solid var(--border2);text-decoration:none;transition:.15s}
 .foot-social a svg{width:17px;height:17px}
 .foot-social a:hover{transform:translateY(-2px);text-decoration:none;border-color:var(--acc)}
 .foot-social .wa svg{fill:#25D366}
 .foot-social .ig svg{fill:#E1306C}
 .foot-social .li svg{fill:#0A66C2}
-.foot-links{font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.9}
+.foot-links{font-size:11px;color:var(--dim);line-height:1.9}
 .foot-links a{cursor:pointer;color:var(--acc2)}
-.playbadge{display:inline-flex;align-items:center;gap:9px;background:#000;border:1px solid var(--border2);border-radius:10px;padding:6px 12px;text-decoration:none;color:#fff;margin-bottom:12px;transition:.15s}
+.playbadge{display:inline-flex;align-items:center;gap:9px;background:#000;border:1px solid var(--border2);border-radius:10px;padding:6px 12px;text-decoration:none;color:#fff;transition:.15s}
 .playbadge:hover{border-color:var(--acc);text-decoration:none}
 .playbadge .pb-ico{width:18px;height:18px;flex-shrink:0}
 .playbadge span span,.playbadge>span{display:flex;flex-direction:column;font-size:13px;font-weight:700;line-height:1.05}
 .playbadge small{font-size:8px;font-weight:500;color:var(--mut);letter-spacing:.3px}
-.foot-meta{font-size:10.5px;color:var(--dim);line-height:1.7;border-top:1px solid var(--border);padding-top:10px}
+.foot-meta{font-size:10.5px;color:var(--dim);line-height:1.7}
+.app-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding:15px 18px;border:1px solid var(--border);border-radius:16px;background:rgba(13,13,28,.74);backdrop-filter:blur(12px)}
+.app-footer .foot-left,.app-footer .foot-mid,.app-footer .foot-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.app-footer .foot-connect{margin:0}
 /* Always-visible credits rail on wide desktops */
 .creditsrail{display:none}
-@media(min-width:1180px){
-  .creditsrail{display:block;position:fixed;top:20px;right:18px;width:248px;max-height:calc(100vh - 40px);overflow:auto;background:rgba(19,19,42,.9);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;padding:18px;z-index:30}
-  .main{max-width:none;margin-right:280px}
-  body.scollapsed .main{margin-right:280px}
+@media(min-width:1200px){
+  /* starts below the topbar so it never overlaps the user chip / sign-out */
+  .creditsrail{display:block;position:fixed;top:84px;right:var(--rail-gap);width:var(--rail-w);max-height:calc(100vh - 104px);overflow:auto;background:rgba(19,19,42,.92);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;padding:14px;z-index:20;font-size:12.5px}
   #creditsBox{display:none}   /* avoid duplicate; the rail shows credits on wide screens */
 }
-.creditsrail h3{font-size:15px;margin-bottom:4px}
+.creditsrail h3{font-size:14px;margin-bottom:4px}
+.creditsrail .credit-row{font-size:12.5px;gap:8px}
+.creditsrail::-webkit-scrollbar{width:6px}
+.creditsrail:empty{display:none}
 /* Animated 'coming soon' announcement bar */
 .announce{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(124,92,255,.16),rgba(244,114,182,.12));border:1px solid rgba(124,92,255,.32);border-radius:14px;padding:9px 12px;margin-bottom:16px;overflow:hidden}
 .announce.hide{display:none}
@@ -137,27 +146,32 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .rh-row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;text-transform:capitalize}
 .rh-date{color:var(--dim);font-size:11.5px;text-transform:none;flex-shrink:0}
 /* Collapsed-sidebar motivation rail: gentle vertical text in the left gutter, only on desktop when collapsed */
-.motrail{position:fixed;left:0;top:0;bottom:0;width:60px;display:none;align-items:center;justify-content:center;z-index:5;pointer-events:none;opacity:0;transition:opacity .5s}
+.motrail{position:fixed;left:0;top:0;bottom:0;width:84px;display:none;align-items:center;justify-content:center;z-index:5;pointer-events:none;opacity:0;transition:opacity .5s}
 body.scollapsed .motrail{display:flex;opacity:1}
-.motrail span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:12px;letter-spacing:1px;color:var(--dim);font-weight:600;white-space:nowrap;background:linear-gradient(180deg,var(--acc2),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;transition:opacity .6s}
+.motrail::before{content:'';position:absolute;inset:78px 18px;border:1px solid rgba(167,139,250,.18);border-radius:999px;background:linear-gradient(180deg,rgba(124,92,255,.12),rgba(244,114,182,.08));box-shadow:0 18px 60px rgba(124,92,255,.12)}
+.motrail span{position:relative;writing-mode:vertical-rl;transform:rotate(180deg);font-size:14px;letter-spacing:1.8px;color:var(--dim);font-weight:800;white-space:nowrap;background:linear-gradient(180deg,#f0abfc,var(--acc2),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 22px rgba(244,114,182,.22);transition:opacity .6s}
 @media(max-width:920px){.motrail{display:none !important}}
 
-.main{flex:1;margin-left:246px;padding:24px clamp(16px,4vw,44px) 110px;max-width:1190px;transition:margin .3s cubic-bezier(.4,0,.2,1)}
+.main{flex:1;min-width:0;width:calc(100% - var(--sidebar-w));margin-left:var(--sidebar-w);padding:24px clamp(16px,4vw,44px) 110px;max-width:1190px;transition:margin .3s cubic-bezier(.4,0,.2,1)}
 /* When the sidebar is hidden, center the content column instead of leaving a blank band. */
 body.scollapsed .main{margin-left:auto;margin-right:auto}
+@media(min-width:1200px){
+  body .app .main{width:auto;max-width:none;margin-right:calc(var(--rail-w) + var(--rail-gap) + 20px)}
+  body.scollapsed .app .main{width:auto;max-width:none;margin-left:84px;margin-right:calc(var(--rail-w) + var(--rail-gap) + 20px)}
+}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
 .topbar h1{font-size:clamp(20px,3vw,26px);font-weight:800}
 .topbar .sub{color:var(--mut);font-size:13.5px;margin-top:2px}
 .hamb{background:var(--card);border:1px solid var(--border);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:16px;cursor:pointer;transition:.15s}
 .hamb:hover{border-color:var(--acc)}
-.topright{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.topright{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
 .userchip{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--border2);border-radius:99px;padding:5px 7px 5px 6px;font-size:13px;font-weight:600}
 .userchip img,.userchip .av{width:28px;height:28px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-size:12px;color:#fff}
 .userchip .so{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35);color:var(--bad);border-radius:99px;padding:4px 12px;font-size:11.5px;font-weight:600;cursor:pointer;transition:.15s}
 .userchip .so:hover{background:rgba(248,113,113,.25)}
 
 /* ── Components ── */
-.card{background:rgba(19,19,42,.78);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:18px;padding:22px;transition:transform .22s,border-color .22s,box-shadow .22s;position:relative}
+.card{background:rgba(19,19,42,.78);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:18px;padding:22px;transition:transform .22s,border-color .22s,box-shadow .22s;position:relative;min-width:0}
 .card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 10px 34px rgba(0,0,0,.35)}
 .card h3{font-size:16px;margin-bottom:6px}
 .grid{display:grid;gap:16px}
@@ -274,7 +288,7 @@ label.fl{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin:
 .quote-card{border-left:3px solid var(--acc);background:rgba(124,92,255,.07);border-radius:14px;padding:18px 20px;font-style:italic;color:#d8d4f0}
 .quote-card .tip{font-style:normal;font-size:13px;color:var(--mut);margin-top:10px}
 
-pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--border);border-radius:14px;padding:20px;font-family:'Inter';font-size:13.5px;max-height:480px;overflow-y:auto}
+pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;border:1px solid var(--border);border-radius:14px;padding:20px;font-family:'Inter';font-size:13.5px;max-height:480px;overflow:auto}
 
 .spin{display:inline-block;width:17px;height:17px;border:2.5px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite;vertical-align:-3px}
 @keyframes rot{to{transform:rotate(360deg)}}
@@ -363,10 +377,13 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   body{font-size:14.5px}
   .sidebar{transform:translateX(-100%);width:min(82vw,290px)}
   .sidebar.open{transform:none;box-shadow:30px 0 80px rgba(0,0,0,.6)}
-  .main{margin-left:0;padding:14px 14px 100px}
+  .main{width:100%;max-width:none;margin-left:0;margin-right:0;padding:14px 14px 100px}
   .topbar{flex-wrap:wrap;gap:10px;margin-bottom:18px}
   .topbar h1{font-size:20px}
   .topright{width:100%;justify-content:flex-start;gap:8px}
+  .badge{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .app-footer{align-items:flex-start;flex-direction:column;padding:14px}
+  .app-footer .foot-left,.app-footer .foot-mid,.app-footer .foot-right{width:100%}
   .msg{max-width:92%}
   .botpanel{bottom:84px;right:14px;left:14px;width:auto;height:min(70vh,486px)}
   .fab{bottom:18px;right:18px;width:52px;height:52px}
@@ -692,6 +709,31 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
     <section class="view" id="v-refer">
       <div class="card" id="referViewBox"></div>
     </section>
+
+    <footer class="side-foot app-footer">
+      <div class="foot-left">
+        <div class="foot-connect">Connect with us</div>
+        <div class="foot-social">
+          <a class="wa" href="https://wa.me/919177304813" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp"><svg viewBox="0 0 24 24"><use href="#b-whatsapp"/></svg></a>
+          <a class="ig" href="#" onclick="toast('Instagram coming soon!');return false;" title="Instagram (coming soon)" aria-label="Instagram"><svg viewBox="0 0 24 24"><use href="#b-instagram"/></svg></a>
+          <a class="li" href="https://www.linkedin.com/in/mohammed-faisal-34414b20b/" target="_blank" rel="noopener" title="LinkedIn" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><use href="#b-linkedin"/></svg></a>
+        </div>
+      </div>
+      <div class="foot-mid">
+        <div class="foot-links">
+          <a onclick="openInfo('why')">Why we built this</a> ·
+          <a onclick="openInfo('privacy')">Privacy</a> ·
+          <a onclick="openInfo('terms')">Terms</a>
+        </div>
+        <a class="playbadge" href="#" onclick="toast('Android app coming soon!');return false;" title="Android app coming soon">
+          <svg class="pb-ico" viewBox="0 0 24 24"><use href="#b-play"/></svg><span><small>Coming soon on</small>Google Play</span>
+        </a>
+      </div>
+      <div class="foot-right">
+        <div class="foot-meta">Version 0.1 · Made with love for job seekers<br>
+          Created by <a href="https://codixasolutions.vercel.app" target="_blank" rel="noopener">Codixa</a></div>
+      </div>
+    </footer>
   </main>
   <!-- Subtle motivation rail shown only when the sidebar is collapsed (desktop) -->
   <div class="motrail" id="motRail" aria-hidden="true"><span id="motRailText"></span></div>
