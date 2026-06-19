@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -233,6 +233,58 @@ function shareReferral(via) {
 }
 
 /* ── Fun rotating loaders & friendly errors ── */
+function creditsHTML() {
+  const t = pointsState.tools || {};
+  const rows = Object.keys(TOOL_LABELS).map((k) => {
+    const r = t[k] || { daily: 0, bonus: 0, remaining: 0, limit: 3 };
+    const cls = r.remaining > 0 ? "cg" : "cr";
+    const parts = [`${r.daily} daily`];
+    if (r.bonus > 0) parts.push(`${r.bonus} referral saved`);
+    const sub = r.remaining > 0 ? parts.join(" + ") : "daily used up — referral credits stay saved until used";
+    return `<div class="credit-row"><span>${TOOL_LABELS[k]}</span><span class="credit-pill ${cls}">${r.remaining} left</span></div><div class="credit-sub">${sub}</div>`;
+  }).join("");
+  return `<h3>🎟️ Your free credits</h3>
+    <div style="font-size:12px;color:var(--mut);margin:2px 0 12px">3 free daily uses per tool. Refer a friend to add 3 referral credits per tool.</div>
+    ${rows}
+    <div style="font-size:11px;color:var(--dim);margin-top:10px;display:flex;gap:6px;align-items:flex-start"><span>🕛</span><span>Daily credits reset every midnight and don't carry over. Referral credits carry over until you use them.</span></div>
+    <button class="btn sm" style="margin-top:12px;width:100%" onclick="go('refer')">🎁 Refer &amp; get free credits</button>`;
+}
+
+function referContentHTML() {
+  const link = referralLink();
+  const code = pointsState?.code || "";
+  const count = pointsState?.referrals || 0;
+  const toNext = 10 - (count % 10);
+  const list = pointsState?.referralList || [];
+  const historyRows = list.length
+    ? list.map((r) => `<div class="ref-hist-row"><span>${esc(r.name || "Friend")}</span><span class="ref-status ok">✅ joined</span><span class="ref-date">${esc(r.date || "")}</span></div>`).join("")
+    : `<div style="font-size:12.5px;color:var(--dim);padding:8px 0">No referrals yet. Share your link or code below, your friends will appear here once they sign up.</div>`;
+  return `
+    <p style="color:var(--mut);font-size:13.5px">Share your link or code. When a friend signs up, <b style="color:var(--good)">+3 referral credits are added to every tool</b> and they stay saved until used. Your friend gets +2 referral credits per tool for joining.</p>
+    <div class="refer-codebox"><span>Your referral code: <b style="color:var(--good)">${esc(code || "Loading...")}</b></span><button class="btn sm ghost" onclick="navigator.clipboard.writeText('${esc(code)}');toast('Code copied!')" ${code ? "" : "disabled"}>Copy code</button></div>
+    <div class="refer-codebox"><span>${esc(link)}</span><button class="btn sm" onclick="navigator.clipboard.writeText('${esc(link)}');toast('Link copied!')">Copy link</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn sm good" onclick="shareReferral('whatsapp')">💬 WhatsApp</button>
+      <button class="btn sm ghost" onclick="shareReferral('any')">🔗 Share</button>
+    </div>
+    <div class="refer-stats">
+      <div><b>${count}</b><span>Friends referred</span></div>
+      <div><b>${toNext}</b><span>more for a 48h mega bonus</span></div>
+    </div>
+    <h4 style="margin:16px 0 6px;font-size:14px">👥 Your referrals</h4>
+    <div class="ref-hist">${historyRows}</div>
+    <p style="font-size:12px;color:var(--dim);margin-top:12px">🏆 Every 10 referrals unlocks a 48-hour mega bonus across all tools.</p>`;
+}
+
+function shareReferral(via) {
+  const link = referralLink();
+  const code = pointsState?.code || "";
+  const msg = `🚀 I'm using JobTopper, a free AI career companion (resume ATS score, JD tailoring, interview practice, live jobs & more). Sign up with my link and we both get referral credits that carry over until used: ${link}${code ? ` Code: ${code}` : ""}`;
+  if (via === "whatsapp") { window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank"); return; }
+  if (navigator.share) { navigator.share({ title: "JobTopper", text: msg, url: link }).catch(() => {}); }
+  else { navigator.clipboard.writeText(link); toast("Link copied, share it anywhere!"); }
+}
+
 let loaderTimer = null;
 function loadBox(messages, subText) {
   clearInterval(loaderTimer);
