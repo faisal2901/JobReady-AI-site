@@ -79,16 +79,29 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .side-foot a:hover{text-decoration:underline}
 .foot-connect{font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase}
 .foot-social{display:flex;gap:8px;margin-bottom:12px}
-.foot-social a{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--card2);border:1px solid var(--border2);color:var(--acc2);font-size:14px;font-weight:700;text-decoration:none;transition:.15s}
-.foot-social a:hover{background:rgba(124,92,255,.18);transform:translateY(-2px);text-decoration:none}
+.foot-social a{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--card2);border:1px solid var(--border2);text-decoration:none;transition:.15s}
+.foot-social a svg{width:17px;height:17px}
+.foot-social a:hover{transform:translateY(-2px);text-decoration:none;border-color:var(--acc)}
+.foot-social .wa svg{fill:#25D366}
+.foot-social .ig svg{fill:#E1306C}
+.foot-social .li svg{fill:#0A66C2}
 .foot-links{font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.9}
 .foot-links a{cursor:pointer;color:var(--acc2)}
 .playbadge{display:inline-flex;align-items:center;gap:9px;background:#000;border:1px solid var(--border2);border-radius:10px;padding:6px 12px;text-decoration:none;color:#fff;margin-bottom:12px;transition:.15s}
 .playbadge:hover{border-color:var(--acc);text-decoration:none}
-.playbadge .pb-ico{font-size:16px;color:#34d399}
+.playbadge .pb-ico{width:18px;height:18px;flex-shrink:0}
 .playbadge span span,.playbadge>span{display:flex;flex-direction:column;font-size:13px;font-weight:700;line-height:1.05}
 .playbadge small{font-size:8px;font-weight:500;color:var(--mut);letter-spacing:.3px}
 .foot-meta{font-size:10.5px;color:var(--dim);line-height:1.7;border-top:1px solid var(--border);padding-top:10px}
+/* Always-visible credits rail on wide desktops */
+.creditsrail{display:none}
+@media(min-width:1180px){
+  .creditsrail{display:block;position:fixed;top:20px;right:18px;width:248px;max-height:calc(100vh - 40px);overflow:auto;background:rgba(19,19,42,.9);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;padding:18px;z-index:30}
+  .main{max-width:none;margin-right:280px}
+  body.scollapsed .main{margin-right:280px}
+  #creditsBox{display:none}   /* avoid duplicate; the rail shows credits on wide screens */
+}
+.creditsrail h3{font-size:15px;margin-bottom:4px}
 /* Animated 'coming soon' announcement bar */
 .announce{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(124,92,255,.16),rgba(244,114,182,.12));border:1px solid rgba(124,92,255,.32);border-radius:14px;padding:9px 12px;margin-bottom:16px;overflow:hidden}
 .announce.hide{display:none}
@@ -117,6 +130,12 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .ref-hist-row span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ref-status.ok{color:var(--good);font-size:12px;font-weight:600}
 .ref-date{font-size:11px;color:var(--dim)}
+.rh-stats{display:flex;gap:12px;margin:12px 0}
+.rh-stats div{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center}
+.rh-stats b{font-size:22px;font-family:'Sora';display:block;color:var(--acc2)}
+.rh-stats span{font-size:11px;color:var(--mut)}
+.rh-row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;text-transform:capitalize}
+.rh-date{color:var(--dim);font-size:11.5px;text-transform:none;flex-shrink:0}
 /* Collapsed-sidebar motivation rail: gentle vertical text in the left gutter, only on desktop when collapsed */
 .motrail{position:fixed;left:0;top:0;bottom:0;width:60px;display:none;align-items:center;justify-content:center;z-index:5;pointer-events:none;opacity:0;transition:opacity .5s}
 body.scollapsed .motrail{display:flex;opacity:1}
@@ -362,6 +381,14 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   .trow select{flex:1}
   .tour-pop{width:min(300px,calc(100vw - 28px))}
   .tour-skip{top:12px;right:12px}
+  .grid{gap:12px}
+  .hero h2{font-size:19px}
+  .hero p{font-size:13px}
+  .stat{padding:14px}
+  .stat b{font-size:22px}
+  /* the topbar h1/sub can be compact so the dashboard shows more above the fold */
+  .topbar .sub{font-size:12px}
+  .topright{order:3}
 }
 @media(max-width:480px){
   .topbar h1{font-size:18px}
@@ -374,6 +401,14 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   .ch-ms .ms-day{font-size:9px;color:var(--acc2)}
   .btn{padding:10px 16px;font-size:13.5px}
   .userchip{font-size:12px}
+  .main{padding:12px 12px 96px}
+  .card{padding:15px}
+  .hero{padding:18px 15px}
+  .announce{padding:8px 10px}
+  .ann-move span{font-size:12px}
+  /* stack the jobs/tracker/salary/roadmap multi-input rows on tiny screens */
+  .g4{gap:10px}
+  .rh-stats div,.refer-stats div{padding:10px}
 }
 </style>
 </head>
@@ -389,17 +424,15 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   </defs>
   <symbol id="jr-logo" viewBox="0 0 240 240">
     <rect x="10" y="10" width="220" height="220" rx="54" fill="url(#lgrad)"/>
-    <!-- "J" -->
-    <text x="86" y="158" font-family="Sora,Arial Black,Arial" font-weight="800" font-size="120" fill="#fff" text-anchor="middle" letter-spacing="-6">J</text>
-    <!-- "T" whose stem is a necktie: top bar + knot + hanging tie -->
-    <g>
-      <rect x="120" y="64" width="86" height="20" rx="6" fill="#fff"/>            <!-- T top bar -->
-      <path d="M163 86 l-13 13 13 13 13 -13 z" fill="#fff"/>                       <!-- tie knot -->
-      <path d="M163 114 l16 44 -16 26 -16 -26 z" fill="#fff"/>                     <!-- hanging tie -->
+    <!-- Balanced "JT" wordmark: J and T same size, baseline aligned -->
+    <text x="120" y="156" font-family="Sora,Arial Black,Arial" font-weight="800" font-size="116" fill="#fff" text-anchor="middle" letter-spacing="-4">JT</text>
+    <!-- small necktie accent hanging from the T's crossbar -->
+    <g fill="url(#swg)">
+      <path d="M150 70 l-9 9 9 9 9 -9 z"/>            <!-- knot -->
+      <path d="M150 89 l11 30 -11 18 -11 -18 z"/>     <!-- tie -->
     </g>
-    <!-- success swoosh -->
-    <path d="M30 172 q 94 64 184 -10" stroke="url(#swg)" stroke-width="9" fill="none" stroke-linecap="round" opacity=".9"/>
-    <path d="M188 36 l6 14 14 6 -14 6 -6 14 -6 -14 -14 -6 14 -6 z" fill="#fff" opacity=".95"/>
+    <!-- sparkle -->
+    <path d="M190 40 l5 12 12 5 -12 5 -5 12 -5 -12 -12 -5 12 -5 z" fill="#fff" opacity=".95"/>
   </symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></symbol>
   <symbol id="i-scan" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/><path d="M8.5 11h5M11 8.5v5"/></symbol>
@@ -413,6 +446,11 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 3 10.5l7 2.5M21 3l-6 18-4.5-8M21 3 10 13"/></symbol>
   <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c4 0 6.5-2.6 6.5-6.2 0-3.2-2.2-5-3.7-7.3C13.7 5.9 13.3 4.4 13 3c-2.5 1.6-4.2 3.8-4.4 6.4-.7-.6-1.2-1.4-1.4-2.4C5.5 8.6 5 10.7 5 12.6 5 17.4 8 21 12 21Z"/></symbol>
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9z"/></symbol>
+  <!-- brand logos (single-color paths, tinted via currentColor/fill) -->
+  <symbol id="b-whatsapp" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 0 1 8.413 3.488 11.82 11.82 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.82 9.82 0 0 0 1.523 5.281l-.999 3.648 3.965-1.04zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></symbol>
+  <symbol id="b-instagram" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></symbol>
+  <symbol id="b-linkedin" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></symbol>
+  <symbol id="b-play" viewBox="0 0 24 24"><path d="M3.609 1.814L13.792 12 3.609 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .61-.92z" fill="#00d4ff"/><path d="M16.802 9.01l2.892 1.66c1.07.616 1.07 2.044 0 2.66l-2.913 1.67-2.405-2.398 2.426-2.592z" fill="#ffce00"/><path d="M3.61 1.814l10.182 10.184 2.41-2.59L6.27.81C5.4.314 4.39.36 3.61 1.014v.8z" fill="#00f076"/><path d="M13.792 12L3.61 22.186c.78.654 1.79.7 2.66.204l10.534-6.092L13.792 12z" fill="#ff3a44"/></symbol>
 </svg>
 
 <!-- ── Splash ── -->
@@ -445,14 +483,14 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
       <a data-v="salary"><svg class="nico"><use href="#i-coin"/></svg>Salary Intel (India)</a>
       <a data-v="roadmap"><svg class="nico"><use href="#i-map"/></svg>Career Roadmap</a>
       <div class="sep">REWARDS</div>
-      <a onclick="openRefer()"><svg class="nico"><use href="#i-spark"/></svg>Refer &amp; Earn Credits</a>
+      <a data-v="refer"><svg class="nico"><use href="#i-spark"/></svg>Refer &amp; Earn Credits</a>
     </nav>
     <div class="side-foot">
       <div class="foot-connect">Connect with us</div>
       <div class="foot-social">
-        <a href="https://wa.me/919177304813" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp">💬</a>
-        <a href="#" onclick="toast('📸 Instagram coming soon!');return false;" title="Instagram (coming soon)" aria-label="Instagram">📸</a>
-        <a href="https://www.linkedin.com/in/mohammed-faisal-34414b20b/" target="_blank" rel="noopener" title="LinkedIn" aria-label="LinkedIn">in</a>
+        <a class="wa" href="https://wa.me/919177304813" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp"><svg viewBox="0 0 24 24"><use href="#b-whatsapp"/></svg></a>
+        <a class="ig" href="#" onclick="toast('📸 Instagram coming soon!');return false;" title="Instagram (coming soon)" aria-label="Instagram"><svg viewBox="0 0 24 24"><use href="#b-instagram"/></svg></a>
+        <a class="li" href="https://www.linkedin.com/in/mohammed-faisal-34414b20b/" target="_blank" rel="noopener" title="LinkedIn" aria-label="LinkedIn"><svg viewBox="0 0 24 24"><use href="#b-linkedin"/></svg></a>
       </div>
       <div class="foot-links">
         <a onclick="openInfo('why')">Why we built this</a> ·
@@ -460,7 +498,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
         <a onclick="openInfo('terms')">Terms</a>
       </div>
       <a class="playbadge" href="#" onclick="toast('📱 Android app coming soon!');return false;" title="Android app coming soon">
-        <span class="pb-ico">▶</span><span><small>Coming soon on</small>Google Play</span>
+        <svg class="pb-ico" viewBox="0 0 24 24"><use href="#b-play"/></svg><span><small>Coming soon on</small>Google Play</span>
       </a>
       <div class="foot-meta">Version 0.1 · Made with ❤️ for job seekers<br>
         Created by <a href="https://codixasolutions.vercel.app" target="_blank" rel="noopener">Codixa</a></div>
@@ -487,9 +525,10 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
       <div class="announce" id="announceBar">
         <span class="ann-ico">🚀</span>
         <div class="ann-track"><div class="ann-move">
-          <span>✨ We're just getting started, more powerful features are on the way!</span>
-          <span>🔔 Coming soon: smart job alerts, mock interviews with feedback, and a mobile app.</span>
-          <span>💎 We're upgrading JobTopper for the best job-hunting experience, stay tuned!</span>
+          <span>✨ Everything here is 100% free, what others charge for, you get at no cost.</span>
+          <span>🔔 Coming soon: instant job alerts, AI auto-apply, recruiter-view resume preview & a mobile app.</span>
+          <span>🤖 Soon: an AI agent that finds, tailors and applies to jobs for you, first in India.</span>
+          <span>💎 We're upgrading JobTopper every week for the best job-hunting experience. Stay tuned!</span>
         </div></div>
         <button class="ann-x" onclick="dismissAnnounce()" aria-label="Dismiss">✕</button>
       </div>
@@ -542,6 +581,7 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
         <button class="btn" id="analyzeBtn" style="margin-top:14px" onclick="runAnalyze()">🔍 Analyze Resume & Get ATS Score</button>
       </div>
       <div id="analyzeOut"></div>
+      <div class="card" id="resumeHistory" style="margin-top:16px"></div>
     </section>
 
     <!-- ══ TAILOR ══ -->
@@ -647,9 +687,16 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
       </div>
       <div id="roadmapOut"></div>
     </section>
+
+    <!-- ══ REFER & EARN ══ -->
+    <section class="view" id="v-refer">
+      <div class="card" id="referViewBox"></div>
+    </section>
   </main>
   <!-- Subtle motivation rail shown only when the sidebar is collapsed (desktop) -->
   <div class="motrail" id="motRail" aria-hidden="true"><span id="motRailText"></span></div>
+  <!-- Always-visible credits rail (desktop, wide screens) -->
+  <aside class="creditsrail" id="creditsRail"></aside>
 </div>
 
 <!-- ── Info modal (Why / Privacy / Terms) ── -->
@@ -658,6 +705,20 @@ pre.resume-out{white-space:pre-wrap;background:#0c0c1c;border:1px solid var(--bo
     <button class="mx" onclick="closeInfo()" aria-label="Close">✕</button>
     <h2 id="infoTitle" style="text-align:center"></h2>
     <div id="infoBody" style="font-size:13.5px;color:var(--mut);line-height:1.7"></div>
+  </div>
+</div>
+
+<!-- ── New-user welcome: confirm name + optional referral code ── -->
+<div class="modal-bg" id="welcomeModal">
+  <div class="modal">
+    <button class="mx" onclick="skipWelcome()" aria-label="Close">✕</button>
+    <div style="font-size:40px">👋</div>
+    <h2>Welcome to JobTopper!</h2>
+    <p>Confirm your name, and if a friend invited you, enter their referral code to get <b style="color:var(--good)">+2 bonus credits on every tool</b>.</p>
+    <input type="text" id="wName" placeholder="Your name" style="margin-bottom:10px" />
+    <input type="text" id="wRef" placeholder="Referral code (optional)" style="margin-bottom:14px;text-transform:uppercase" />
+    <button class="btn" style="width:100%" onclick="submitWelcome()">Continue →</button>
+    <p style="margin-top:12px;font-size:11.5px;color:var(--dim)">No code? Just continue, you still get 3 free credits per tool daily.</p>
   </div>
 </div>
 
