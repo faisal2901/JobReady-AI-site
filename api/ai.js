@@ -2,7 +2,9 @@
 // POST /api/ai  body: { action, ...payload }
 // Actions: analyze | boost | tailor | coverletter | interview | salary | roadmap | motivation | support
 
-const MODELS = (process.env.GEMINI_MODELS || "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-flash-lite")
+// Order matters: lead with the fast, reliable model so we don't waste seconds on
+// a model that's likely rate-limited. Override via GEMINI_MODELS env if needed.
+const MODELS = (process.env.GEMINI_MODELS || "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3.5-flash")
   .split(",").map((m) => m.trim()).filter(Boolean);
 
 const STYLE = `Writing style rule: never use em dashes or hyphens to join sentence parts. Write natural flowing sentences with commas and periods instead.`;
@@ -415,10 +417,12 @@ Return JSON:
 }
 
 /* ---------- motivation ---------- */
-async function motivation({ name, applied, streak }) {
-  const sys = `You write one short, powerful daily motivation for an Indian job seeker. Mix grit and warmth. Occasionally reference Indian achievers (Kalam, Dhoni, Sudha Murty, etc.) naturally. Return JSON only.`;
-  const usr = `Today's date: ${new Date().toISOString().slice(0, 10)}. ${name ? "Name: " + name + "." : ""} Applications so far: ${applied || 0}. Day streak: ${streak || 1}.
-Return JSON: {"quote": "1-2 sentence original motivational message", "tip": "one actionable job search tip for today", "author": "JobTopper"}`;
+async function motivation({ name, applied, streak, timeOfDay }) {
+  const tod = ["morning", "afternoon", "evening", "night"].includes(timeOfDay) ? timeOfDay : "day";
+  const sys = `You write one short, powerful daily motivation for an Indian job seeker. Mix grit and warmth. Occasionally reference Indian achievers (Kalam, Dhoni, Sudha Murty, etc.) naturally. The "tip" MUST fit the current time of day: never say "before lunch" in the evening/night, never say "wind down" in the morning. Keep the tip realistic for right now. Return JSON only.`;
+  const usr = `Current time of day: ${tod}. ${name ? "Name: " + name + "." : ""} Applications so far: ${applied || 0}. Day streak: ${streak || 1}.
+Write a fresh, ${name ? "personalized" : ""} message and a tip appropriate for the ${tod}.
+Return JSON: {"quote": "1-2 sentence original motivational message", "tip": "one actionable job search tip suitable for the ${tod}", "author": "JobTopper"}`;
   return geminiJSON({ system: sys, user: usr, temperature: 0.9, maxTokens: 512 });
 }
 

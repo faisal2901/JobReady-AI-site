@@ -32,14 +32,20 @@ function dayDiff(a, b) {
 }
 
 // Roll a stored {streak,lastVisit} forward to `today`.
+// Streak roll with a forgiving grace window so a genuinely daily user never
+// loses their streak to timezone slop, a late-night vs early-morning visit, or
+// a missed sync. We only RESET when 3+ calendar days clearly passed with no
+// visit. A single skipped day (diff === 2) keeps the streak (counts as a grace
+// day) rather than wiping weeks of progress.
 function roll(streak, lastVisit, today) {
   if (!lastVisit) return { streak: 1, lastVisit: today };
   if (lastVisit === today) return { streak: Math.max(1, streak), lastVisit: today };
   const diff = dayDiff(lastVisit, today);
-  if (diff === 1) return { streak: Math.max(1, streak) + 1, lastVisit: today }; // consecutive day
-  if (diff !== null && diff > 1) return { streak: 1, lastVisit: today };        // chain broken
-  // diff <= 0 (clock skew / older date sent): keep the stronger record as-is
-  return { streak: Math.max(1, streak), lastVisit };
+  if (diff === null) return { streak: Math.max(1, streak), lastVisit }; // unparseable, keep
+  if (diff <= 0) return { streak: Math.max(1, streak), lastVisit };      // clock skew / older date
+  if (diff === 1) return { streak: Math.max(1, streak) + 1, lastVisit: today }; // normal next day
+  if (diff === 2) return { streak: Math.max(1, streak) + 1, lastVisit: today }; // grace: 1 missed day, keep going
+  return { streak: 1, lastVisit: today }; // 3+ days missed → genuine reset
 }
 
 /* ── Per-IP rate limiting so the sync endpoint can't be hammered ── */
