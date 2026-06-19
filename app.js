@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -111,6 +111,9 @@ function applyPointsState(s) {
   pointsState = s;
   if (Array.isArray(s.notifications)) s.notifications.forEach((n) => setTimeout(() => toast(n), 400));
   renderCredits();
+  // keep the Refer page live if it's currently open
+  const rv = document.getElementById("v-refer");
+  if (rv && rv.classList.contains("active")) renderReferView();
 }
 async function refreshPoints() { applyPointsState(await pointsApi("status")); }
 
@@ -138,24 +141,28 @@ function referralLink() {
   const code = pointsState?.code || "";
   return location.origin + "/?ref=" + code;
 }
-function renderCredits() {
-  const box = $("creditsBox");
-  if (!box) return;
-  if (!pointsState || pointsState.upstash === false) { box.innerHTML = ""; return; }
+function creditsHTML() {
   const t = pointsState.tools || {};
   const rows = Object.keys(TOOL_LABELS).map((k) => {
     const r = t[k] || { daily: 0, bonus: 0, remaining: 0, limit: 3 };
     const cls = r.remaining > 0 ? "cg" : "cr";
-    // Breakdown: "3 daily" + optional "+N referral"
     const parts = [`${r.daily} daily`];
     if (r.bonus > 0) parts.push(`+${r.bonus} referral`);
     const sub = r.remaining > 0 ? parts.join(" ") : "used up — resets at midnight, or refer a friend";
     return `<div class="credit-row"><span>${TOOL_LABELS[k]}</span><span class="credit-pill ${cls}">${r.remaining} left</span></div><div class="credit-sub">${sub}</div>`;
   }).join("");
-  box.innerHTML = `<h3>🎟️ Your free credits</h3>
-    <div style="font-size:12px;color:var(--mut);margin:2px 0 12px">3 free uses per tool each day, reset at midnight (your time). Refer a friend to instantly add 3 more per tool.</div>
+  return `<h3>🎟️ Your free credits</h3>
+    <div style="font-size:12px;color:var(--mut);margin:2px 0 12px">3 free uses per tool each day. Refer a friend to instantly add 3 more per tool.</div>
     ${rows}
-    <button class="btn sm" style="margin-top:14px;width:100%" onclick="openRefer()">🎁 Refer &amp; get free credits</button>`;
+    <div style="font-size:11px;color:var(--dim);margin-top:10px;display:flex;gap:6px;align-items:flex-start"><span>🕛</span><span>Credits auto-refill every midnight (12 AM your local time). Unused credits don't carry over.</span></div>
+    <button class="btn sm" style="margin-top:12px;width:100%" onclick="go('refer')">🎁 Refer &amp; get free credits</button>`;
+}
+function renderCredits() {
+  const box = $("creditsBox"), rail = $("creditsRail");
+  const empty = (!pointsState || pointsState.upstash === false);
+  const html = empty ? "" : creditsHTML();
+  if (box) box.innerHTML = html;
+  if (rail) rail.innerHTML = html;
 }
 // Auto-detect: if referral bonus exists for this tool, offer to use it; else prompt to refer.
 function showOutOfCredits(tool) {
@@ -175,10 +182,8 @@ function showOutOfCredits(tool) {
   showConfirm("🎁", `Out of ${label} credits`, `You've used your 3 free ${label} credits for today. They reset at midnight (your local time). Don't want to wait? Refer 1 friend and instantly get 3 more credits for every tool, the moment they sign up.`,
     "🎁 Refer a friend", () => { closeCelebrate(); openRefer(); }, "Maybe later");
 }
-function openRefer() {
-  const cb = $("celebrateBtn"); if (cb) { cb.textContent = "Let's keep going 🚀"; cb.onclick = closeCelebrate; }
-  if (!user?.email) { openLogin(); return; }
-  if (!pointsState) { refreshPoints(); }
+// Shared referral markup, used by both the full-page view and the popup.
+function referContentHTML() {
   const link = referralLink();
   const count = pointsState?.referrals || 0;
   const toNext = 10 - (count % 10);
@@ -186,7 +191,7 @@ function openRefer() {
   const historyRows = list.length
     ? list.map((r) => `<div class="ref-hist-row"><span>${esc(r.name || "Friend")}</span><span class="ref-status ok">✅ joined</span><span class="ref-date">${esc(r.date || "")}</span></div>`).join("")
     : `<div style="font-size:12.5px;color:var(--dim);padding:8px 0">No referrals yet. Share your link below, your friends will appear here once they sign up.</div>`;
-  $("referBody").innerHTML = `
+  return `
     <p style="color:var(--mut);font-size:13.5px">Share your link. The moment a friend signs up, <b style="color:var(--good)">+3 credits are added to every tool</b> instantly, no waiting. Your friend also gets bonus credits for joining.</p>
     <div class="refer-codebox"><span>${esc(link)}</span><button class="btn sm" onclick="navigator.clipboard.writeText('${esc(link)}');toast('📋 Link copied!')">Copy</button></div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -200,6 +205,21 @@ function openRefer() {
     <h4 style="margin:16px 0 6px;font-size:14px">👥 Your referrals</h4>
     <div class="ref-hist">${historyRows}</div>
     <p style="font-size:12px;color:var(--dim);margin-top:12px">🏆 Every 10 referrals unlocks a 48-hour mega bonus across all tools.</p>`;
+}
+// Full-page Refer & Earn view (the nav target). Always shows content, never blank.
+function renderReferView() {
+  const box = $("referViewBox");
+  if (!box) return;
+  if (!user?.email) { box.innerHTML = `<h3>🎁 Refer & Earn Credits</h3><p style="color:var(--mut);margin-top:8px">Sign in to get your referral link and start earning free credits.</p><button class="btn" style="margin-top:14px" onclick="openLogin()">Sign in</button>`; return; }
+  if (!pointsState) refreshPoints();
+  box.innerHTML = `<h3>🎁 Refer & Earn Credits</h3>${referContentHTML()}`;
+}
+// Popup version (used from the out-of-credits flow).
+function openRefer() {
+  const cb = $("celebrateBtn"); if (cb) { cb.textContent = "Let's keep going 🚀"; cb.onclick = closeCelebrate; }
+  if (!user?.email) { openLogin(); return; }
+  if (!pointsState) refreshPoints();
+  $("referBody").innerHTML = referContentHTML();
   $("referModal").classList.add("show");
   $("sidebar").classList.remove("open");
 }
@@ -352,25 +372,42 @@ function completeLogin(u) {
   store.set("user", u);
   if (returning) reloadStateFromStorage();
   // Analytics: a brand-new email = signup, otherwise a login.
-  track(store.get("registered_" + hashStr(u.email.toLowerCase()), false) ? "login" : "signup", { email: u.email, name: u.name });
+  const isNew = !store.get("registered_" + hashStr(u.email.toLowerCase()), false);
+  track(isNew ? "signup" : "login", { email: u.email, name: u.name });
   store.set("registered_" + hashStr(u.email.toLowerCase()), true);
-  // Register with the points service and apply any referral code captured from the URL.
-  // signup credits the referrer + the new friend; status fetch loads the credit balance.
-  pointsApi("signup", { ref: store.get("pendingRef", "") }).then((s) => {
-    store.del("pendingRef");
-    applyPointsState(s);
-  });
   calcStreak();
   closeLogin(); renderAuth(); renderDashboard();
   const first = u.name.split(" ")[0];
   toast(returning
     ? `🎉 Welcome back to your JobTopper journey, ${first}! Everything is right where you left it.`
     : `🌟 Welcome aboard, ${first}! Let's get you job ready.`);
-  // Every brand-new user (Google or email) gets the guided walkthrough once,
-  // automatically. We wait for the login modal to finish closing first.
-  if (!returning && !tourSeen()) {
-    setTimeout(() => startTour(false), 700);
+  if (isNew && !returning) {
+    // New user: collect name + optional referral code, then register with points.
+    $("wName").value = u.name || "";
+    $("wRef").value = store.get("pendingRef", "");
+    $("welcomeModal").classList.add("show");
+    // tour starts after they finish the welcome step (see submitWelcome/skipWelcome)
+  } else {
+    // Returning user: just load the credit balance.
+    pointsApi("signup", { ref: "" }).then(applyPointsState);
   }
+}
+// New-user welcome: save chosen name, apply referral code, then continue.
+function submitWelcome() {
+  const name = ($("wName").value || "").trim();
+  const ref = ($("wRef").value || "").trim().toUpperCase();
+  if (name && user) { user.name = name; store.set("user", user); renderAuth(); renderDashboard(); }
+  $("welcomeModal").classList.remove("show");
+  store.del("pendingRef");
+  pointsApi("signup", { ref, name }).then((s) => { applyPointsState(s); if (ref) toast("🎟️ Referral applied! +2 bonus credits on every tool."); });
+  if (!tourSeen()) setTimeout(() => startTour(false), 500);
+}
+function skipWelcome() {
+  $("welcomeModal").classList.remove("show");
+  const ref = store.get("pendingRef", "");
+  store.del("pendingRef");
+  pointsApi("signup", { ref }).then(applyPointsState);
+  if (!tourSeen()) setTimeout(() => startTour(false), 500);
 }
 function onGoogleCred(resp) {
   try {
@@ -441,17 +478,19 @@ const TITLES = {
   interview: ["Interview Mentor", "Practice real rounds, calibrated to your resume."],
   salary: ["Salary Intelligence", "Realistic INR figures for the Indian market."],
   roadmap: ["Career Roadmap", "A step by step plan from where you are to where you want to be."],
+  refer: ["Refer & Earn Credits", "Invite friends, instantly unlock free credits for every tool."],
 };
 function go(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.v === view));
-  $("v-" + view).classList.add("active");
-  $("viewTitle").textContent = TITLES[view][0];
-  $("viewSub").textContent = TITLES[view][1];
+  const sec = $("v-" + view); if (sec) sec.classList.add("active");
+  $("viewTitle").textContent = (TITLES[view] || ["", ""])[0];
+  $("viewSub").textContent = (TITLES[view] || ["", ""])[1];
   $("sidebar").classList.remove("open");
   window.scrollTo({ top: 0 });
   if (view === "tracker") renderTracker();
   if (view === "dashboard") renderDashboard();
+  if (view === "refer") renderReferView();
 }
 document.querySelectorAll(".nav a").forEach((a) => a.addEventListener("click", () => go(a.dataset.v)));
 
@@ -484,18 +523,49 @@ async function parseFile(file) {
     if (text.length < 100) return toast("⚠️ Couldn't extract enough text, try pasting it instead.");
     resumeText = text; resumeName = file.name;
     store.set("resume", text); store.set("resumeName", file.name);
+    store.set("resumeDate", new Date().toISOString());
+    recordResumeHistory("uploaded", file.name);
     $("resumeText").value = text;
     updateResumeBadge();
     toast("✅ Resume loaded: " + file.name);
   } catch (e) { toast("❌ Parse error: " + e.message); }
+}
+/* ── Resume history: track uploads, tailors, boosts ── */
+function recordResumeHistory(type, label) {
+  const h = store.get("resumeHistory", { uploaded: 0, tailored: 0, boosted: 0, items: [] });
+  if (type === "uploaded") h.uploaded++;
+  if (type === "tailored") h.tailored++;
+  if (type === "boosted") h.boosted++;
+  h.items.unshift({ type, label: label || "", date: new Date().toISOString() });
+  h.items = h.items.slice(0, 30);
+  store.set("resumeHistory", h);
+  renderResumeHistory();
+}
+function fmtDate(iso) {
+  try { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return ""; }
+}
+function renderResumeHistory() {
+  const box = $("resumeHistory");
+  if (!box) return;
+  const h = store.get("resumeHistory", null);
+  if (!h || !h.items || !h.items.length) { box.innerHTML = ""; return; }
+  const icon = { uploaded: "📄", tailored: "✂️", boosted: "🚀" };
+  const rows = h.items.slice(0, 8).map((it) =>
+    `<div class="rh-row"><span>${icon[it.type] || "•"} ${esc(it.type)}${it.label ? " · " + esc(it.label) : ""}</span><span class="rh-date">${esc(fmtDate(it.date))}</span></div>`).join("");
+  box.innerHTML = `<h3>🗂️ Your resume history</h3>
+    <div class="rh-stats"><div><b>${h.uploaded}</b><span>Uploaded</span></div><div><b>${h.tailored}</b><span>Tailored</span></div><div><b>${h.boosted}</b><span>Boosted</span></div></div>
+    <div class="rh-list">${rows}</div>`;
 }
 function updateResumeBadge() {
   const has = resumeText.trim().length > 100;
   $("resumeBadge").textContent = has ? "📄 " + (resumeName || "Resume loaded") : "📄 No resume yet";
   $("resumeBadge").className = has ? "badge g" : "badge v";
   const info = $("resumeInfo");
-  if (has && resumeName) { info.style.display = "block"; $("resumeFileBadge").textContent = "✅ " + resumeName + " · " + resumeText.split(/\s+/).length + " words"; }
-  else info.style.display = "none";
+  if (has && resumeName) {
+    info.style.display = "block";
+    const d = store.get("resumeDate", "");
+    $("resumeFileBadge").textContent = "✅ " + resumeName + " · " + resumeText.split(/\s+/).length + " words" + (d ? " · added " + fmtDate(d) : "");
+  } else info.style.display = "none";
 }
 function toggleResumeEdit() { const t = $("resumeText"); t.style.display = t.style.display === "none" ? "block" : "none"; }
 function needResume() { if (resumeText.trim().length < 100) { toast("⚠️ Upload or paste your resume first (Analyzer tab)"); go("analyzer"); return true; } return false; }
@@ -599,6 +669,7 @@ async function runBoost() {
       originalScore: lastAnalysis?.atsScore,
     }, 0);
     lastBoosted = data;
+    recordResumeHistory("boosted", "");
     const oldS = lastAnalysis?.atsScore;
     const newS = data.verifiedScore;
     const up = oldS ? newS - oldS : null;
@@ -739,6 +810,7 @@ async function runTailor() {
   if (jd.length < 50) return toast("⚠️ Paste the Job Description first");
   if (!(await checkCredit("tailor"))) return;
   store.set("used_tailor", true);
+  recordResumeHistory("tailored", $("tJobTitle").value || "");
   busyBtn("tailorBtn", true);
   $("tailorOut").innerHTML = loadBox([
     "✂️ Reading the JD like a hiring manager…",
@@ -1410,6 +1482,7 @@ function renderChallenge() {
 (function init() {
   if (resumeText) { $("resumeText").value = resumeText; }
   updateResumeBadge();
+  renderResumeHistory();
   renderAuth();
   calcStreak();
   renderDashboard();
