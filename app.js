@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -542,7 +542,11 @@ function recordResumeHistory(type, label) {
   renderResumeHistory();
 }
 function fmtDate(iso) {
-  try { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return ""; }
+  try {
+    const d = new Date(iso);
+    if (!iso || Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  } catch { return ""; }
 }
 function renderResumeHistory() {
   const box = $("resumeHistory");
@@ -555,6 +559,33 @@ function renderResumeHistory() {
   box.innerHTML = `<h3>🗂️ Your resume history</h3>
     <div class="rh-stats"><div><b>${h.uploaded}</b><span>Uploaded</span></div><div><b>${h.tailored}</b><span>Tailored</span></div><div><b>${h.boosted}</b><span>Boosted</span></div></div>
     <div class="rh-list">${rows}</div>`;
+}
+function renderResumeHistory() {
+  const box = $("resumeHistory");
+  if (!box) return;
+  const h = store.get("resumeHistory", { uploaded: 0, tailored: 0, boosted: 0, items: [] });
+  h.items = Array.isArray(h.items) ? h.items : [];
+  const activeResumeCount = resumeText.trim().length > 100 && !h.uploaded ? 1 : 0;
+  const uploaded = (h.uploaded || 0) + activeResumeCount;
+  const tailored = h.tailored || 0;
+  const boosted = h.boosted || 0;
+  const bestScore = lastAnalysis?.atsScore ?? store.get("analysis", null)?.atsScore ?? "-";
+  const icon = { uploaded: "📄", tailored: "✂️", boosted: "🚀" };
+  const inferredRow = activeResumeCount
+    ? `<div class="rh-row"><span>📄 Current resume loaded${resumeName ? " · " + esc(resumeName) : ""}</span><span class="rh-date">${esc(fmtDate(store.get("resumeDate", "")) || "Active")}</span></div>`
+    : "";
+  const rows = h.items.slice(0, 8).map((it) =>
+    `<div class="rh-row"><span>${icon[it.type] || "•"} ${esc(it.type)}${it.label ? " · " + esc(it.label) : ""}</span><span class="rh-date">${esc(fmtDate(it.date))}</span></div>`).join("");
+  const empty = !inferredRow && !rows;
+  box.innerHTML = `<h3>🗂️ Resume activity history</h3>
+    <div class="rh-stats">
+      <div><b>${uploaded}</b><span>Uploaded</span></div>
+      <div><b>${boosted}</b><span>Boosted</span></div>
+      <div><b>${tailored}</b><span>Tailored</span></div>
+      <div><b>${bestScore}</b><span>Best ATS</span></div>
+    </div>
+    <div class="rh-list">${inferredRow}${rows}</div>
+    ${empty ? `<div style="font-size:13px;color:var(--mut);padding-top:4px">Upload a resume, boost it, or tailor it for a job. Your activity count will appear here automatically.</div>` : ""}`;
 }
 function updateResumeBadge() {
   const has = resumeText.trim().length > 100;

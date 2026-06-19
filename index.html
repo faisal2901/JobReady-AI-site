@@ -97,7 +97,7 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .playbadge span span,.playbadge>span{display:flex;flex-direction:column;font-size:13px;font-weight:700;line-height:1.05}
 .playbadge small{font-size:8px;font-weight:500;color:var(--mut);letter-spacing:.3px}
 .foot-meta{font-size:10.5px;color:var(--dim);line-height:1.7}
-.app-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding:15px 18px;border:1px solid var(--border);border-radius:16px;background:rgba(13,13,28,.74);backdrop-filter:blur(12px)}
+.app-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:auto;padding:15px 18px;border:1px solid var(--border);border-radius:16px;background:rgba(13,13,28,.74);backdrop-filter:blur(12px)}
 .app-footer .foot-left,.app-footer .foot-mid,.app-footer .foot-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .app-footer .foot-connect{margin:0}
 /* Always-visible credits rail on wide desktops */
@@ -152,7 +152,7 @@ body.scollapsed .motrail{display:flex;opacity:1}
 .motrail span{position:relative;writing-mode:vertical-rl;transform:rotate(180deg);font-size:14px;letter-spacing:1.8px;color:var(--dim);font-weight:800;white-space:nowrap;background:linear-gradient(180deg,#f0abfc,var(--acc2),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 22px rgba(244,114,182,.22);transition:opacity .6s}
 @media(max-width:920px){.motrail{display:none !important}}
 
-.main{flex:1;min-width:0;width:calc(100% - var(--sidebar-w));margin-left:var(--sidebar-w);padding:24px clamp(16px,4vw,44px) 110px;max-width:1190px;transition:margin .3s cubic-bezier(.4,0,.2,1)}
+.main{flex:1;min-width:0;width:calc(100% - var(--sidebar-w));min-height:100vh;margin-left:var(--sidebar-w);padding:24px clamp(16px,4vw,44px) 110px;max-width:1190px;display:flex;flex-direction:column;transition:margin .3s cubic-bezier(.4,0,.2,1)}
 /* When the sidebar is hidden, center the content column instead of leaving a blank band. */
 body.scollapsed .main{margin-left:auto;margin-right:auto}
 @media(min-width:1200px){
@@ -207,7 +207,7 @@ label.fl{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin:
 .chip.miss{color:var(--warn);border-color:rgba(251,191,36,.35)}
 
 .view{display:none;animation:fade .35s cubic-bezier(.2,.7,.3,1)}
-.view.active{display:block}
+.view.active{display:block;margin-bottom:28px}
 @keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
 .drop{border:2px dashed var(--border2);border-radius:18px;padding:38px 20px;text-align:center;cursor:pointer;transition:.2s;background:rgba(124,92,255,.03)}
