@@ -612,6 +612,9 @@ body.signed-in .dashboard-lead{
 body.signed-in .guest-login-card{
   display:none;
 }
+.guestrail{
+  display:none;
+}
 .dashboard-lead .hero{
   margin-bottom:0;
   min-height:100%;
@@ -693,6 +696,34 @@ body.signed-in .guest-login-card{
   margin-top:12px;
   color:var(--dim);
   font-size:11.5px;
+}
+@media(min-width:1500px){
+  body.signed-out .app .main{
+    margin-right:334px;
+  }
+  body.signed-out.scollapsed .app .main{
+    margin-right:334px;
+  }
+  body.signed-out .guestrail{
+    display:block;
+    position:fixed;
+    top:210px;
+    right:var(--rail-gap);
+    width:300px;
+    max-height:calc(100vh - 238px);
+    overflow:auto;
+    z-index:19;
+  }
+  body.signed-out .guestrail .btn{
+    padding-left:14px;
+    padding-right:14px;
+  }
+  body.signed-out .guestrail .guest-actions{
+    flex-direction:column;
+  }
+  body.signed-out .guestrail .guest-actions .btn{
+    width:100%;
+  }
 }
 @media(min-width:921px){
   .topright{
@@ -855,31 +886,13 @@ body.signed-in .guest-login-card{
         </div></div>
         <button class="ann-x" onclick="dismissAnnounce()" aria-label="Dismiss">✕</button>
       </div>
-      <div class="dashboard-lead">
-      <div class="hero">
+      <div class="hero" style="margin-bottom:18px">
         <h2 id="greet">Welcome! 👋</h2>
         <p>Upload your resume once. Then analyze it, boost it to 90+, tailor it to any JD, find fresh openings, practice interviews and track every application. All free, all in one place.</p>
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn" onclick="go('analyzer')">Analyze my resume</button>
           <button class="btn ghost" onclick="go('jobs')">Find jobs posted today</button>
         </div>
-      </div>
-        <aside class="guest-login-card" id="guestLoginCard" aria-label="Free sign in benefits">
-          <span class="guest-kicker">Free account</span>
-          <h3>Unlock your career workspace</h3>
-          <p>Save your resume, credits, referrals, streak and job progress across every visit.</p>
-          <div class="guest-points">
-            <span>Resume ATS score and improvement plan</span>
-            <span>Tailor your resume for any job description</span>
-            <span>Track applications, interviews and streaks</span>
-            <span>Earn referral credits that stay saved until used</span>
-          </div>
-          <div class="guest-actions">
-            <button class="btn" onclick="openLogin()">Sign in free</button>
-            <button class="btn ghost" onclick="go('analyzer')">Try analyzer</button>
-          </div>
-          <small>No payment needed. 3 free daily credits per tool.</small>
-        </aside>
       </div>
       <div class="grid g4" style="margin-bottom:18px">
         <div class="stat"><span class="sico"><svg><use href="#i-target"/></svg></span><b id="dAts">—</b><span>ATS Score</span></div>
@@ -1064,6 +1077,22 @@ body.signed-in .guest-login-card{
   <div class="motrail" id="motRail" aria-hidden="true"><span id="motRailText"></span></div>
   <!-- Always-visible credits rail (desktop, wide screens) -->
   <aside class="creditsrail" id="creditsRail"></aside>
+  <aside class="guestrail guest-login-card" id="guestLoginCard" aria-label="Free sign in benefits">
+    <span class="guest-kicker">Free account</span>
+    <h3>Unlock your career workspace</h3>
+    <p>Save your resume, credits, referrals, streak and job progress across every visit.</p>
+    <div class="guest-points">
+      <span>Resume ATS score and improvement plan</span>
+      <span>Tailor your resume for any job description</span>
+      <span>Track applications, interviews and streaks</span>
+      <span>Earn referral credits that stay saved until used</span>
+    </div>
+    <div class="guest-actions">
+      <button class="btn" onclick="openLogin()">Sign in free</button>
+      <button class="btn ghost" onclick="go('analyzer')">Try analyzer</button>
+    </div>
+    <small>No payment needed. 3 free daily credits per tool.</small>
+  </aside>
 </div>
 
 <div class="cookiebar" id="cookieBar" role="dialog" aria-live="polite" aria-label="Cookie notice">
