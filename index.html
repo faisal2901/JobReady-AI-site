@@ -544,7 +544,7 @@ input:focus,select:focus,textarea:focus{
 }
 .topbar{
   display:grid;
-  grid-template-columns:52px minmax(0,1fr) auto;
+  grid-template-columns:52px minmax(0,1fr);
   align-items:start;
   column-gap:16px;
   row-gap:10px;
@@ -560,7 +560,9 @@ input:focus,select:focus,textarea:focus{
   max-width:100%;
 }
 .topright{
+  grid-column:2 / -1;
   justify-self:end;
+  justify-content:flex-end;
   max-width:100%;
   min-width:0;
 }
@@ -597,14 +599,11 @@ input:focus,select:focus,textarea:focus{
 .nav a.active{
   box-shadow:inset 3px 0 0 rgba(45,212,191,.8);
 }
-@media(max-width:1480px) and (min-width:921px){
-  .topbar{
-    grid-template-columns:52px minmax(0,1fr);
-  }
+@media(min-width:921px){
   .topright{
     grid-column:2 / -1;
-    justify-self:start;
-    justify-content:flex-start;
+    justify-self:end;
+    justify-content:flex-end;
   }
   .topright .badge{
     max-width:min(390px,42vw);
