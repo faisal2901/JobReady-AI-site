@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -158,11 +158,21 @@ function creditsHTML() {
     <button class="btn sm" style="margin-top:12px;width:100%" onclick="go('refer')">🎁 Refer &amp; get free credits</button>`;
 }
 function renderCredits() {
-  const box = $("creditsBox"), rail = $("creditsRail");
+  const box = $("creditsBox"), rail = $("creditsRail"), mobile = $("mobileCredits");
   const empty = (!pointsState || pointsState.upstash === false);
   const html = empty ? "" : creditsHTML();
   if (box) box.innerHTML = html;
   if (rail) rail.innerHTML = html;
+  if (mobile) mobile.innerHTML = empty ? "" : mobileCreditsHTML();
+}
+function mobileCreditsHTML() {
+  const t = pointsState?.tools || {};
+  const short = { jobs: "Jobs", analyze: "ATS", tailor: "Tailor", salary: "Salary", roadmap: "Roadmap" };
+  const pills = Object.keys(TOOL_LABELS).map((k) => {
+    const r = t[k] || { daily: 0, bonus: 0, remaining: 0 };
+    return `<span class="mc-pill">${short[k]} ${r.remaining}</span>`;
+  }).join("");
+  return `<div class="mc-head"><span>🎟️ Available credits</span><button class="btn sm ghost" onclick="go('refer')">Refer</button></div><div class="mc-row">${pills}</div>`;
 }
 // Auto-detect: if referral bonus exists for this tool, offer to use it; else prompt to refer.
 function showOutOfCredits(tool) {
@@ -521,6 +531,20 @@ function requireLogin() {
 }
 
 /* ── Navigation ── */
+function hasCookieConsent() {
+  return store.get("cookieConsent", false) || /(?:^|;\s*)jr_cookie_consent=accepted\b/.test(document.cookie || "");
+}
+function acceptCookies() {
+  store.set("cookieConsent", true);
+  document.cookie = "jr_cookie_consent=accepted; Max-Age=31536000; Path=/; SameSite=Lax; Secure";
+  const bar = $("cookieBar");
+  if (bar) bar.classList.remove("show");
+}
+function initCookieNotice() {
+  const bar = $("cookieBar");
+  if (bar && !hasCookieConsent()) setTimeout(() => bar.classList.add("show"), 900);
+}
+
 const TITLES = {
   dashboard: ["Dashboard", "Your job search, supercharged."],
   analyzer: ["Resume Analyzer & ATS Score", "Genuine, stable ATS scoring. AI rubric plus deterministic checks."],
@@ -533,6 +557,7 @@ const TITLES = {
   refer: ["Refer & Earn Credits", "Invite friends, instantly unlock free credits for every tool."],
 };
 function go(view) {
+  document.body.dataset.view = view;
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.v === view));
   const sec = $("v-" + view); if (sec) sec.classList.add("active");
@@ -543,6 +568,7 @@ function go(view) {
   if (view === "tracker") renderTracker();
   if (view === "dashboard") renderDashboard();
   if (view === "refer") renderReferView();
+  renderCredits();
 }
 document.querySelectorAll(".nav a").forEach((a) => a.addEventListener("click", () => go(a.dataset.v)));
 
@@ -1563,6 +1589,7 @@ function renderChallenge() {
 
 /* ── Init ── */
 (function init() {
+  document.body.dataset.view = "dashboard";
   if (resumeText) { $("resumeText").value = resumeText; }
   updateResumeBadge();
   renderResumeHistory();
@@ -1577,6 +1604,7 @@ function renderChallenge() {
   } catch (_) {}
   // If already signed in, load the credit balance now.
   if (user?.email) refreshPoints();
+  initCookieNotice();
   // Analytics: count one page visit per session (avoids double-counting reloads).
   if (!sessionStorage.getItem("jr_visited")) { sessionStorage.setItem("jr_visited", "1"); track("visit"); }
 })();

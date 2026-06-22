@@ -111,6 +111,12 @@ body.scollapsed .sidebar{transform:translateX(-100%)}
 .creditsrail .credit-row{font-size:12.5px;gap:8px}
 .creditsrail::-webkit-scrollbar{width:6px}
 .creditsrail:empty{display:none}
+.mobilecredits{display:none}
+.cookiebar{position:fixed;left:18px;right:18px;bottom:18px;z-index:500;display:none;align-items:center;justify-content:space-between;gap:14px;background:rgba(13,13,28,.96);border:1px solid var(--border2);border-radius:16px;padding:14px 16px;box-shadow:0 18px 60px rgba(0,0,0,.55);backdrop-filter:blur(14px)}
+.cookiebar.show{display:flex}
+.cookiebar p{font-size:12.5px;color:var(--mut);line-height:1.5}
+.cookiebar b{color:#fff}
+.cookiebar .btn{flex-shrink:0}
 /* Animated 'coming soon' announcement bar */
 .announce{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(124,92,255,.16),rgba(244,114,182,.12));border:1px solid rgba(124,92,255,.32);border-radius:14px;padding:9px 12px;margin-bottom:16px;overflow:hidden}
 .announce.hide{display:none}
@@ -160,7 +166,8 @@ body.scollapsed .main{margin-left:auto;margin-right:auto}
   body.scollapsed .app .main{width:auto;max-width:none;margin-left:84px;margin-right:calc(var(--rail-w) + var(--rail-gap) + 20px)}
 }
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
-.topbar h1{font-size:clamp(20px,3vw,26px);font-weight:800}
+.topbar>div:nth-of-type(1){min-width:0}
+.topbar h1{font-size:clamp(20px,3vw,26px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
 .topbar .sub{color:var(--mut);font-size:13.5px;margin-top:2px}
 .hamb{background:var(--card);border:1px solid var(--border);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:16px;cursor:pointer;transition:.15s}
 .hamb:hover{border-color:var(--acc)}
@@ -379,7 +386,7 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
   .sidebar.open{transform:none;box-shadow:30px 0 80px rgba(0,0,0,.6)}
   .main{width:100%;max-width:none;margin-left:0;margin-right:0;padding:14px 14px 100px}
   .topbar{flex-wrap:wrap;gap:10px;margin-bottom:18px}
-  .topbar h1{font-size:20px}
+  .topbar h1{font-size:clamp(18px,5vw,20px);max-width:100%}
   .topright{width:100%;justify-content:flex-start;gap:8px}
   .badge{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .app-footer{align-items:flex-start;flex-direction:column;padding:14px}
@@ -406,9 +413,14 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
   /* the topbar h1/sub can be compact so the dashboard shows more above the fold */
   .topbar .sub{font-size:12px}
   .topright{order:3}
+  body:not([data-view="dashboard"]) .mobilecredits:not(:empty){display:block;position:sticky;top:8px;z-index:35;margin:-4px 0 12px;background:rgba(19,19,42,.94);border:1px solid var(--border2);border-radius:14px;padding:10px 12px;box-shadow:0 10px 34px rgba(0,0,0,.35);backdrop-filter:blur(12px)}
+  .mc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:800;color:#fff;margin-bottom:7px}
+  .mc-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+  .mc-pill{flex:0 0 auto;border:1px solid rgba(52,211,153,.32);background:rgba(52,211,153,.08);color:var(--good);border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800;white-space:nowrap}
+  .cookiebar{left:10px;right:10px;bottom:10px;flex-direction:column;align-items:stretch}
 }
 @media(max-width:480px){
-  .topbar h1{font-size:18px}
+  .topbar h1{font-size:clamp(17px,4.8vw,19px)}
   .stat b{font-size:23px}
   .g4{grid-template-columns:repeat(2,1fr)}
   .ch-track{margin:24px 16px 38px}
@@ -536,6 +548,7 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
         <span id="authArea"></span>
       </div>
     </div>
+    <div class="mobilecredits" id="mobileCredits" aria-live="polite"></div>
 
     <!-- ══ DASHBOARD ══ -->
     <section class="view active" id="v-dashboard">
@@ -739,6 +752,11 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
   <div class="motrail" id="motRail" aria-hidden="true"><span id="motRailText"></span></div>
   <!-- Always-visible credits rail (desktop, wide screens) -->
   <aside class="creditsrail" id="creditsRail"></aside>
+</div>
+
+<div class="cookiebar" id="cookieBar" role="dialog" aria-live="polite" aria-label="Cookie notice">
+  <p><b>Cookies and local storage</b><br>JobTopper uses essential cookies/local storage for sign-in, credits, resume progress, referrals and security. No ad tracking.</p>
+  <button class="btn sm" onclick="acceptCookies()">Allow cookies</button>
 </div>
 
 <!-- ── Info modal (Why / Privacy / Terms) ── -->
