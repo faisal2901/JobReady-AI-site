@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -519,6 +519,8 @@ function confirmSignout() {
   toast("👋 Signed out. Your data is locked safely on this device until you return.");
 }
 function renderAuth() {
+  document.body.classList.toggle("signed-in", !!user);
+  document.body.classList.toggle("signed-out", !user);
   $("authArea").innerHTML = user
     ? `<span class="userchip">${user.pic ? `<img src="${esc(user.pic)}" referrerpolicy="no-referrer">` : `<span class="av">${esc(user.name[0].toUpperCase())}</span>`}${esc(user.name.split(" ")[0])}<button class="so" onclick="openSignout()">Sign out</button></span>`
     : `<button class="btn sm" onclick="openLogin()">Sign in</button>`;

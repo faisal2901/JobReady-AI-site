@@ -599,6 +599,101 @@ input:focus,select:focus,textarea:focus{
 .nav a.active{
   box-shadow:inset 3px 0 0 rgba(45,212,191,.8);
 }
+.dashboard-lead{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(300px,360px);
+  gap:18px;
+  align-items:stretch;
+  margin-bottom:18px;
+}
+body.signed-in .dashboard-lead{
+  grid-template-columns:minmax(0,1fr);
+}
+body.signed-in .guest-login-card{
+  display:none;
+}
+.dashboard-lead .hero{
+  margin-bottom:0;
+  min-height:100%;
+}
+.guest-login-card{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(45,212,191,.26);
+  border-radius:16px;
+  padding:22px;
+  background:
+    radial-gradient(circle at 88% 12%,rgba(45,212,191,.16),transparent 30%),
+    linear-gradient(180deg,rgba(16,27,43,.92),rgba(16,16,36,.92));
+  box-shadow:0 18px 48px rgba(0,0,0,.24);
+}
+.guest-login-card::before{
+  content:"";
+  position:absolute;
+  inset:auto 18px 0 18px;
+  height:3px;
+  border-radius:99px 99px 0 0;
+  background:linear-gradient(90deg,#2dd4bf,#7c3aed,#db5dc6);
+}
+.guest-kicker{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid rgba(45,212,191,.34);
+  border-radius:999px;
+  padding:5px 10px;
+  color:var(--good);
+  background:rgba(45,212,191,.08);
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.guest-login-card h3{
+  margin-top:14px;
+  font-size:22px;
+  line-height:1.15;
+}
+.guest-login-card p{
+  margin-top:8px;
+  color:var(--mut);
+  font-size:13.5px;
+  line-height:1.55;
+}
+.guest-points{
+  display:grid;
+  gap:9px;
+  margin:16px 0;
+}
+.guest-points span{
+  display:flex;
+  gap:9px;
+  align-items:flex-start;
+  color:#e9e7ff;
+  font-size:13px;
+  line-height:1.35;
+}
+.guest-points span::before{
+  content:"";
+  flex:0 0 7px;
+  width:7px;
+  height:7px;
+  margin-top:6px;
+  border-radius:50%;
+  background:#2dd4bf;
+  box-shadow:0 0 0 4px rgba(45,212,191,.1);
+}
+.guest-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+.guest-login-card small{
+  display:block;
+  margin-top:12px;
+  color:var(--dim);
+  font-size:11.5px;
+}
 @media(min-width:921px){
   .topright{
     grid-column:2 / -1;
@@ -625,6 +720,12 @@ input:focus,select:focus,textarea:focus{
   }
   .app-footer{
     margin-top:auto;
+  }
+  .dashboard-lead{
+    grid-template-columns:1fr;
+  }
+  .guest-login-card{
+    padding:18px;
   }
 }
 @media(max-width:480px){
@@ -754,13 +855,31 @@ input:focus,select:focus,textarea:focus{
         </div></div>
         <button class="ann-x" onclick="dismissAnnounce()" aria-label="Dismiss">✕</button>
       </div>
-      <div class="hero" style="margin-bottom:18px">
+      <div class="dashboard-lead">
+      <div class="hero">
         <h2 id="greet">Welcome! 👋</h2>
         <p>Upload your resume once. Then analyze it, boost it to 90+, tailor it to any JD, find fresh openings, practice interviews and track every application. All free, all in one place.</p>
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn" onclick="go('analyzer')">Analyze my resume</button>
           <button class="btn ghost" onclick="go('jobs')">Find jobs posted today</button>
         </div>
+      </div>
+        <aside class="guest-login-card" id="guestLoginCard" aria-label="Free sign in benefits">
+          <span class="guest-kicker">Free account</span>
+          <h3>Unlock your career workspace</h3>
+          <p>Save your resume, credits, referrals, streak and job progress across every visit.</p>
+          <div class="guest-points">
+            <span>Resume ATS score and improvement plan</span>
+            <span>Tailor your resume for any job description</span>
+            <span>Track applications, interviews and streaks</span>
+            <span>Earn referral credits that stay saved until used</span>
+          </div>
+          <div class="guest-actions">
+            <button class="btn" onclick="openLogin()">Sign in free</button>
+            <button class="btn ghost" onclick="go('analyzer')">Try analyzer</button>
+          </div>
+          <small>No payment needed. 3 free daily credits per tool.</small>
+        </aside>
       </div>
       <div class="grid g4" style="margin-bottom:18px">
         <div class="stat"><span class="sico"><svg><use href="#i-target"/></svg></span><b id="dAts">—</b><span>ATS Score</span></div>
