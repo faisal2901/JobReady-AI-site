@@ -27,6 +27,11 @@ function ipOf(req) {
   return ((req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket?.remoteAddress || "unknown";
 }
 const today = () => new Date().toISOString().slice(0, 10);
+function sameOrigin(req) {
+  const origin = req.headers.origin || "";
+  if (!origin) return true;
+  try { return new URL(origin).host === req.headers.host; } catch (_) { return false; }
+}
 
 /* ── per-IP throttle so the logger can't be spammed ── */
 const mem = new Map();
@@ -53,11 +58,13 @@ const FEATURES = new Set(["analyze", "boost", "tailor", "coverletter", "jobs", "
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
+  if (!sameOrigin(req)) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
   body = body || {};
+  try { if (JSON.stringify(body).length > 4000) return res.status(413).json({ ok: false, error: "Request too large" }); } catch (_) {}
 
   const event = String(body.event || "").toLowerCase();
   if (!EVENTS.has(event)) return res.status(400).json({ ok: false, error: "bad event" });

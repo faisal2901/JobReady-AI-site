@@ -53,6 +53,11 @@ async function tooFast(ip) {
 }
 
 const validDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+function sameOrigin(req) {
+  const origin = req.headers.origin || "";
+  if (!origin) return true;
+  try { return new URL(origin).host === req.headers.host; } catch (_) { return false; }
+}
 function codeFromUid(uid) { return (uid + "x").slice(0, 6).toUpperCase(); }
 async function ensureCode(uid) {
   let code = await redis(["GET", `jp:code:${uid}`]);
@@ -99,14 +104,17 @@ async function addBonusAll(uid, n) { for (const t of TOOLS) await redis(["INCRBY
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
+  if (!sameOrigin(req)) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
   body = body || {};
+  try { if (JSON.stringify(body).length > 8000) return res.status(413).json({ ok: false, error: "Request too large" }); } catch (_) {}
 
   const email = (body.email || "").trim().toLowerCase();
   const action = String(body.action || "");
+  if (!["status", "signup", "consume"].includes(action)) return res.status(400).json({ ok: false, error: "unknown action" });
   const day = validDay(body.day) ? body.day : new Date().toISOString().slice(0, 10);
   if (!email || !/^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$/.test(email)) return res.status(400).json({ ok: false, error: "valid email required" });
 
@@ -124,10 +132,11 @@ module.exports = async (req, res) => {
 
     if (action === "signup") {
       const existed = await redis(["GET", `jp:user:${uid}`]);
-      if (!existed) await redis(["SET", `jp:user:${uid}`, JSON.stringify({ email, name: body.name || "", joined: day })]);
+      const cleanName = String(body.name || "").replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 80);
+      if (!existed) await redis(["SET", `jp:user:${uid}`, JSON.stringify({ email, name: cleanName, joined: day })]);
       await ensureCode(uid);
 
-      const ref = String(body.ref || "").trim().toUpperCase();
+      const ref = String(body.ref || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
       const alreadyReferred = await redis(["GET", `jp:referred:${uid}`]);
       if (ref && !existed && !alreadyReferred) {
         const refOwner = await redis(["GET", `jp:codeowner:${ref}`]);
@@ -138,7 +147,7 @@ module.exports = async (req, res) => {
           const count = await redis(["INCR", `jp:refcount:${refOwner}`]);
           // append to referrer's referral list (name + date + status)
           let list = []; try { const raw = await redis(["GET", `jp:reflist:${refOwner}`]); if (raw) list = JSON.parse(raw); } catch (_) {}
-          list.unshift({ name: (body.name || "A friend"), date: day, status: "joined" });
+          list.unshift({ name: (cleanName || "A friend"), date: day, status: "joined" });
           await redis(["SET", `jp:reflist:${refOwner}`, JSON.stringify(list.slice(0, 100))]);
           await pushNotif(refOwner, `🎉 ${body.name || "A friend"} joined with your link! +${REF_BONUS_REFERRER} credits added to every tool. (${count} referral${count > 1 ? "s" : ""})`);
           if (count % 10 === 0) { await addBonusAll(refOwner, DAILY_LIMIT * 2); await pushNotif(refOwner, `🏆 ${count} referrals! 48-hour mega bonus unlocked across all tools. Thank you!`); }

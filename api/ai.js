@@ -579,6 +579,7 @@ module.exports = async (req, res) => {
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    body.action = String(body.action || "").toLowerCase().trim();
     // Reject oversized payloads early so a giant paste can't waste tokens or memory.
     const MAX_FIELD = 60000;   // ~60k chars per text field (a long resume/JD is well under this)
     const MAX_TOTAL = 200000;  // ~200k chars for the whole request body
@@ -590,9 +591,17 @@ module.exports = async (req, res) => {
     try { if (JSON.stringify(body).length > MAX_TOTAL) return res.status(413).json({ ok: false, error: "Request is too large. Please reduce the text and try again." }); } catch (_) {}
     const fn = ACTIONS[body.action];
     if (!fn) return res.status(400).json({ error: `Unknown action: ${body.action}` });
+    for (const k of ["jobTitle", "company", "role", "city", "skills", "currentRole", "targetRole", "timeline"]) {
+      if (typeof body[k] === "string") body[k] = body[k].replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 160);
+    }
     if (["analyze", "tailor", "boost"].includes(body.action) && !body.resume) {
       return res.status(400).json({ error: "Resume text is required" });
     }
+    if (body.action === "tailor" && (!body.jd || String(body.jd).trim().length < 50)) {
+      return res.status(400).json({ error: "A valid job description is required" });
+    }
+    if (body.action === "salary" && !body.role) return res.status(400).json({ error: "Role is required" });
+    if (body.action === "roadmap" && !body.targetRole) return res.status(400).json({ error: "Target role is required" });
     // Served-from-cache responses are free: no quota, no Gemini call
     if (CACHEABLE[body.action]) {
       const ck = respCacheKey(body.action, body);

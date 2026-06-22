@@ -15,6 +15,11 @@ function sha(s) {
   return (h >>> 0).toString(36);
 }
 const keyFor = (email) => "jrstreak:" + sha(String(email).toLowerCase().trim());
+function sameOrigin(req) {
+  const origin = req.headers.origin || "";
+  if (!origin) return true;
+  try { return new URL(origin).host === req.headers.host; } catch (_) { return false; }
+}
 
 async function redis(cmd) {
   const r = await fetch(`${UPSTASH_URL}/${cmd.map(encodeURIComponent).join("/")}`, {
@@ -73,6 +78,7 @@ async function tooFast(ip) {
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
+  if (!sameOrigin(req)) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   // App-origin gate + throttle, matching the other endpoints.
   if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
   if (await tooFast(ipOf(req))) return res.status(429).json({ ok: false, error: "Too many requests, slow down." });
@@ -80,6 +86,7 @@ module.exports = async (req, res) => {
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; }
   } else if (!body) { body = {}; }
+  try { if (JSON.stringify(body).length > 4000) return res.status(413).json({ ok: false, error: "Request too large" }); } catch (_) {}
 
   const email = (body.email || "").trim();
   const today = (body.today || "").trim();

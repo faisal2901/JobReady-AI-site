@@ -39,6 +39,10 @@ async function pingModel(model, key) {
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
+  const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+  if (!ADMIN_TOKEN) return res.status(404).json({ ok: false, error: "Not found" });
+  const token = (req.query && req.query.token) || req.headers["x-admin-token"];
+  if (token !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: "Unauthorized" });
   const ks = keys();
   const out = {
     time: new Date().toISOString(),
