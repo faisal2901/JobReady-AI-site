@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -556,8 +556,10 @@ const TITLES = {
   roadmap: ["Career Roadmap", "A step by step plan from where you are to where you want to be."],
   refer: ["Refer & Earn Credits", "Invite friends, instantly unlock free credits for every tool."],
 };
+const CREDIT_TOOL_VIEWS = new Set(["analyzer", "tailor", "jobs", "salary", "roadmap"]);
 function go(view) {
   document.body.dataset.view = view;
+  document.body.classList.toggle("show-mobile-credits", CREDIT_TOOL_VIEWS.has(view));
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.v === view));
   const sec = $("v-" + view); if (sec) sec.classList.add("active");
@@ -1100,6 +1102,8 @@ async function sendInterview() {
     if (typeof micUI === "function") micUI(false);
   }
   micFinal = "";
+  micBase = "";
+  micFinalParts = [];
   $("ivInp").value = "";
   pushMsg("user", txt);
   ivHistory.push({ role: "user", text: txt });
@@ -1704,6 +1708,8 @@ function endTour(skipped) {
 let recog = null;
 let micWanted = false;
 let micFinal = "";
+let micBase = "";
+let micFinalParts = [];
 let micHeard = false;
 let micWatchdog = null;
 let micStartedAt = 0;
@@ -1743,12 +1749,16 @@ function buildRecognizer() {
       for (let a = 1; a < res.length; a++) {
         if ((res[a].confidence || 0) > (best.confidence || 0)) best = res[a];
       }
-      const t = best.transcript;
-      if (res.isFinal) micFinal += t.trim() + " ";
-      else interim += t;
+      const t = best.transcript.trim();
+      if (res.isFinal) {
+        if (t) micFinalParts[i] = t;
+      } else {
+        interim += (interim ? " " : "") + t;
+      }
     }
     const box = $("ivInp");
-    box.value = tidyDictation(micFinal + interim);
+    micFinal = micFinalParts.filter(Boolean).join(" ");
+    box.value = tidyDictation([micBase, micFinal, interim].filter(Boolean).join(" "));
     box.scrollTop = box.scrollHeight;
   };
 
@@ -1806,7 +1816,9 @@ async function toggleMic() {
     return toast("🎤 Please allow microphone access (click the lock icon near the address bar → Microphone → Allow), then tap the mic again.");
   }
 
-  micFinal = $("ivInp").value ? $("ivInp").value.trim() + " " : "";
+  micBase = $("ivInp").value ? $("ivInp").value.trim() : "";
+  micFinal = "";
+  micFinalParts = [];
   micHeard = false;
   micDeadRestarts = 0;
   micWanted = true;

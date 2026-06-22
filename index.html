@@ -167,7 +167,7 @@ body.scollapsed .main{margin-left:auto;margin-right:auto}
 }
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
 .topbar>div:nth-of-type(1){min-width:0}
-.topbar h1{font-size:clamp(20px,3vw,26px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
+.topbar h1{font-size:clamp(20px,3vw,26px);font-weight:800;white-space:normal;overflow:visible;text-overflow:clip;letter-spacing:0;line-height:1.18}
 .topbar .sub{color:var(--mut);font-size:13.5px;margin-top:2px}
 .hamb{background:var(--card);border:1px solid var(--border);color:var(--txt);border-radius:11px;padding:9px 13px;font-size:16px;cursor:pointer;transition:.15s}
 .hamb:hover{border-color:var(--acc)}
@@ -200,6 +200,7 @@ body.scollapsed .main{margin-left:auto;margin-right:auto}
 textarea,input[type=text],input[type=number],input[type=email],select{width:100%;background:#0e0e20;border:1px solid var(--border);border-radius:12px;color:var(--txt);padding:12px 14px;font-family:'Inter';font-size:14px;outline:none;transition:.15s;resize:vertical}
 textarea:focus,input:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(124,92,255,.15)}
 textarea{min-height:130px}
+#resumeText{min-height:260px !important;max-height:none;overflow:auto;line-height:1.55}
 label.fl{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin:0 0 6px 2px;letter-spacing:.3px}
 
 .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;font-size:11.5px;font-weight:600;border:1px solid}
@@ -385,8 +386,9 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
   .sidebar{transform:translateX(-100%);width:min(82vw,290px)}
   .sidebar.open{transform:none;box-shadow:30px 0 80px rgba(0,0,0,.6)}
   .main{width:100%;max-width:none;margin-left:0;margin-right:0;padding:14px 14px 100px}
-  .topbar{flex-wrap:wrap;gap:10px;margin-bottom:18px}
-  .topbar h1{font-size:clamp(18px,5vw,20px);max-width:100%}
+  .topbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;margin-bottom:18px}
+  .topbar h1{font-size:clamp(19px,5.4vw,22px);max-width:100%}
+  .topbar .sub{grid-column:1 / -1}
   .topright{width:100%;justify-content:flex-start;gap:8px}
   .badge{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .app-footer{align-items:flex-start;flex-direction:column;padding:14px}
@@ -412,15 +414,16 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
   .stat b{font-size:22px}
   /* the topbar h1/sub can be compact so the dashboard shows more above the fold */
   .topbar .sub{font-size:12px}
-  .topright{order:3}
-  body:not([data-view="dashboard"]) .mobilecredits:not(:empty){display:block;position:sticky;top:8px;z-index:35;margin:-4px 0 12px;background:rgba(19,19,42,.94);border:1px solid var(--border2);border-radius:14px;padding:10px 12px;box-shadow:0 10px 34px rgba(0,0,0,.35);backdrop-filter:blur(12px)}
+  .topright{grid-column:1 / -1}
+  #resumeText{min-height:360px !important;font-size:13.5px}
+  body.show-mobile-credits .mobilecredits:not(:empty){display:block;position:sticky;top:8px;z-index:35;margin:-4px 0 12px;background:rgba(19,19,42,.94);border:1px solid var(--border2);border-radius:14px;padding:10px 12px;box-shadow:0 10px 34px rgba(0,0,0,.35);backdrop-filter:blur(12px)}
   .mc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:800;color:#fff;margin-bottom:7px}
   .mc-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
   .mc-pill{flex:0 0 auto;border:1px solid rgba(52,211,153,.32);background:rgba(52,211,153,.08);color:var(--good);border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800;white-space:nowrap}
   .cookiebar{left:10px;right:10px;bottom:10px;flex-direction:column;align-items:stretch}
 }
 @media(max-width:480px){
-  .topbar h1{font-size:clamp(17px,4.8vw,19px)}
+  .topbar h1{font-size:clamp(18px,5vw,20px)}
   .stat b{font-size:23px}
   .g4{grid-template-columns:repeat(2,1fr)}
   .ch-track{margin:24px 16px 38px}
@@ -677,6 +680,7 @@ pre.resume-out{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c0c1c;bo
           <button class="btn sm" id="ivStartBtn" onclick="startInterview()">🎙️ Start New Session</button>
           <button class="btn sm danger" id="ivEndBtn" onclick="endInterview()" style="display:none">🏁 End Interview</button>
         </div>
+        <div class="badge c" style="margin:-2px 0 14px">Beta service · Interview Mentor and mic practice do not deduct credits</div>
         <div class="chat">
           <div class="msgs" id="ivMsgs">
             <div class="msg ai">Hi! Welcome to JobTopper. I'm your personal mentor. 🎯 Upload your resume (Analyzer tab) for questions tailored exactly to your profile, pick a mode above, and hit <b>Start New Session</b> when you're ready.</div>
