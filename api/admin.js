@@ -1,5 +1,5 @@
 // JobTopper — admin analytics (read-only, token protected).
-// GET /api/admin?token=YOUR_ADMIN_TOKEN[&days=30]
+// GET /api/admin[?days=30] with X-Admin-Token: YOUR_ADMIN_TOKEN
 // Returns traffic, signups, logins/logouts, feature usage and the user roster.
 // Protect by setting ADMIN_TOKEN in Vercel → Settings → Environment Variables.
 
@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
   if (!ADMIN_TOKEN) {
     return res.status(500).json({ ok: false, error: "ADMIN_TOKEN is not set. Add it in Vercel → Settings → Environment Variables, then redeploy." });
   }
-  const token = (req.query && req.query.token) || (req.headers["x-admin-token"]);
+  const token = req.headers["x-admin-token"];
   if (!safeEqual(token, ADMIN_TOKEN)) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }

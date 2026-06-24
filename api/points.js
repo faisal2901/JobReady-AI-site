@@ -123,6 +123,23 @@ function signCreditToken(uid, tool) {
   const sig = crypto.createHmac("sha256", tokenSecret()).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
+function hashSession(token) {
+  return crypto.createHmac("sha256", tokenSecret()).update(String(token || "")).digest("hex");
+}
+function newSessionToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+const sessionKey = (uid) => `jp:session:${uid}`;
+async function createSession(uid) {
+  const token = newSessionToken();
+  await redis(["SET", sessionKey(uid), hashSession(token)]);
+  return token;
+}
+async function hasSession(uid, token) {
+  if (!token) return false;
+  const stored = await redis(["GET", sessionKey(uid)]);
+  return !!stored && stored === hashSession(token);
+}
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -139,6 +156,7 @@ module.exports = async (req, res) => {
 
   const email = (body.email || "").trim().toLowerCase();
   const action = String(body.action || "");
+  const sessionToken = String(body.sessionToken || "").trim();
   if (!["status", "signup", "consume"].includes(action)) return res.status(400).json({ ok: false, error: "unknown action" });
   const day = validDay(body.day) ? body.day : new Date().toISOString().slice(0, 10);
   if (!email || !/^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$/.test(email)) return res.status(400).json({ ok: false, error: "valid email required" });
@@ -146,14 +164,17 @@ module.exports = async (req, res) => {
   // Without Upstash, report unavailable so the client can fail safe (it should NOT silently allow unlimited).
   if (!HAS_UPSTASH) {
     const tools = {}; TOOLS.forEach((t) => tools[t] = { daily: DAILY_LIMIT, bonus: 0, remaining: DAILY_LIMIT, limit: DAILY_LIMIT });
-    return res.status(200).json({ ok: true, upstash: false, tools, code: "", referrals: 0, referralList: [], notifications: [], limit: DAILY_LIMIT, referralCreditsCarryOver: true, dailyCreditsCarryOver: false });
+    return res.status(200).json({ ok: true, upstash: false, tools, code: "", referrals: 0, referralList: [], notifications: [], limit: DAILY_LIMIT, referralCreditsCarryOver: true, dailyCreditsCarryOver: false, sessionToken: "" });
   }
 
   if (await tooFast(ipOf(req))) return res.status(429).json({ ok: false, error: "Too many requests, slow down." });
   const uid = uidOf(email);
 
   try {
-    if (action === "status") return res.status(200).json(await fullStatus(uid, day));
+    if (action === "status") {
+      if (!(await hasSession(uid, sessionToken))) return res.status(401).json({ ok: false, error: "Login session required" });
+      return res.status(200).json(await fullStatus(uid, day));
+    }
 
     if (action === "signup") {
       const existed = await redis(["GET", `jp:user:${uid}`]);
@@ -178,10 +199,12 @@ module.exports = async (req, res) => {
           if (count % 10 === 0) { await addBonusAll(refOwner, DAILY_LIMIT * 2); await pushNotif(refOwner, `🏆 ${count} referrals! 48-hour mega bonus unlocked across all tools. Thank you!`); }
         }
       }
-      return res.status(200).json(await fullStatus(uid, day));
+      const sessionToken = await createSession(uid);
+      return res.status(200).json({ ...(await fullStatus(uid, day)), sessionToken });
     }
 
     if (action === "consume") {
+      if (!(await hasSession(uid, sessionToken))) return res.status(401).json({ ok: false, error: "Login session required" });
       const tool = String(body.tool || "");
       if (!TOOLS.includes(tool)) return res.status(400).json({ ok: false, error: "unknown tool" });
       const st = await toolStatus(uid, tool, day);

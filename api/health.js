@@ -10,6 +10,13 @@ function keys() {
     .map((k) => (k || "").trim()).filter(Boolean);
   return [...new Set(list)];
 }
+function safeEqual(a, b) {
+  a = String(a || ""); b = String(b || "");
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 async function pingModel(model, key) {
   const t0 = Date.now();
@@ -41,8 +48,8 @@ module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
   if (!ADMIN_TOKEN) return res.status(404).json({ ok: false, error: "Not found" });
-  const token = (req.query && req.query.token) || req.headers["x-admin-token"];
-  if (token !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  const token = req.headers["x-admin-token"];
+  if (!safeEqual(token, ADMIN_TOKEN)) return res.status(401).json({ ok: false, error: "Unauthorized" });
   const ks = keys();
   const out = {
     time: new Date().toISOString(),
