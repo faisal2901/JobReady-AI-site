@@ -17,7 +17,13 @@ function sha(s) {
 const keyFor = (email) => "jrstreak:" + sha(String(email).toLowerCase().trim());
 function sameOrigin(req) {
   const origin = req.headers.origin || "";
-  if (!origin) return true;
+  if (!origin) return false;
+  const allowed = new Set([
+    "https://localhost",
+    "capacitor://localhost",
+    ...(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+  ]);
+  if (allowed.has(origin)) return true;
   try { return new URL(origin).host === req.headers.host; } catch (_) { return false; }
 }
 

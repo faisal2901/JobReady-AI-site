@@ -18,6 +18,7 @@
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const HAS_UPSTASH = !!(UPSTASH_URL && UPSTASH_TOKEN);
+const crypto = require("crypto");
 
 const TOOLS = ["jobs", "analyze", "tailor", "salary", "roadmap"];
 const DAILY_LIMIT = 3;
@@ -53,10 +54,22 @@ async function tooFast(ip) {
 }
 
 const validDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
-function sameOrigin(req) {
+function applyCors(req, res) {
   const origin = req.headers.origin || "";
-  if (!origin) return true;
-  try { return new URL(origin).host === req.headers.host; } catch (_) { return false; }
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App, X-JR-Credit");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Vary", "Origin");
+  if (!origin) return false;
+  const allowed = new Set([
+    `https://${req.headers.host}`,
+    "https://localhost",
+    "capacitor://localhost",
+    ...(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+  ]);
+  let ok = allowed.has(origin);
+  try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
+  if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
+  return ok;
 }
 function codeFromUid(uid) { return (uid + "x").slice(0, 6).toUpperCase(); }
 async function ensureCode(uid) {
@@ -101,10 +114,22 @@ async function pushNotif(uid, msg) {
 }
 async function addBonusAll(uid, n) { for (const t of TOOLS) await redis(["INCRBY", bonusKey(uid, t), String(n)]); }
 
+function tokenSecret() {
+  return process.env.AI_TOKEN_SECRET || UPSTASH_TOKEN || process.env.GEMINI_API_KEY || "dev-only-token-secret";
+}
+function b64url(s) { return Buffer.from(s).toString("base64url"); }
+function signCreditToken(uid, tool) {
+  const payload = b64url(JSON.stringify({ uid, tool, exp: Date.now() + 5 * 60 * 1000 }));
+  const sig = crypto.createHmac("sha256", tokenSecret()).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
+  const corsOk = applyCors(req, res);
+  if (req.method === "OPTIONS") return res.status(corsOk ? 200 : 403).end();
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
-  if (!sameOrigin(req)) return res.status(403).json({ ok: false, error: "Origin not allowed" });
+  if (!corsOk) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
 
   let body = req.body;
@@ -173,7 +198,7 @@ module.exports = async (req, res) => {
         await redis(["DECR", bonusKey(uid, tool)]);
       }
       const full = await fullStatus(uid, day);
-      return res.status(200).json({ ...full, ok: true, tool });
+      return res.status(200).json({ ...full, ok: true, tool, creditToken: signCreditToken(uid, tool) });
     }
 
     return res.status(400).json({ ok: false, error: "unknown action" });

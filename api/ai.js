@@ -2,6 +2,8 @@
 // POST /api/ai  body: { action, ...payload }
 // Actions: analyze | boost | tailor | coverletter | interview | salary | roadmap | motivation | support
 
+const crypto = require("crypto");
+
 // Order matters: lead with the fast, reliable model so we don't waste seconds on
 // a model that's likely rate-limited. Override via GEMINI_MODELS env if needed.
 const MODELS = (process.env.GEMINI_MODELS || "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3.5-flash")
@@ -518,8 +520,12 @@ function applyCors(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Vary", "Origin");
-  if (!origin) return true; // same-origin fetch or server-to-server
-  const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!origin) return false;
+  const allowed = [
+    "https://localhost",
+    "capacitor://localhost",
+    ...(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+  ];
   let ok = allowed.includes(origin);
   try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
   if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
@@ -533,6 +539,22 @@ const COSTS = { boost: 4, tailor: 3, coverletter: 2, analyze: 2, roadmap: 2, sal
 const MINUTE_MAX = Number(process.env.AI_PER_MINUTE) || 8;
 const DAILY_MAX = Number(process.env.AI_DAILY_CREDITS) || 80;
 const memMinute = new Map(), memDay = new Map();
+const CREDIT_TOOL_FOR_ACTION = { analyze: "analyze", boost: "analyze", tailor: "tailor", coverletter: "tailor", salary: "salary", roadmap: "roadmap" };
+
+function tokenSecret() {
+  return process.env.AI_TOKEN_SECRET || process.env.UPSTASH_REDIS_REST_TOKEN || process.env.GEMINI_API_KEY || "dev-only-token-secret";
+}
+function verifyCreditToken(token, expectedTool) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return false;
+  const [payload, sig] = token.split(".");
+  const expected = crypto.createHmac("sha256", tokenSecret()).update(payload).digest("base64url");
+  const a = Buffer.from(sig || "");
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  let data;
+  try { data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch (_) { return false; }
+  return data && data.tool === expectedTool && Number(data.exp) > Date.now();
+}
 
 function ipOf(req) {
   return ((req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket?.remoteAddress || "unknown";
@@ -591,6 +613,10 @@ module.exports = async (req, res) => {
     try { if (JSON.stringify(body).length > MAX_TOTAL) return res.status(413).json({ ok: false, error: "Request is too large. Please reduce the text and try again." }); } catch (_) {}
     const fn = ACTIONS[body.action];
     if (!fn) return res.status(400).json({ error: `Unknown action: ${body.action}` });
+    const requiredTool = CREDIT_TOOL_FOR_ACTION[body.action];
+    if (requiredTool && !verifyCreditToken(body.creditToken, requiredTool)) {
+      return res.status(401).json({ ok: false, error: "Please run this tool from the app after credit check." });
+    }
     for (const k of ["jobTitle", "company", "role", "city", "skills", "currentRole", "targetRole", "timeline"]) {
       if (typeof body[k] === "string") body[k] = body[k].replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 160);
     }

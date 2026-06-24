@@ -1,16 +1,38 @@
 // JobTopper — live jobs endpoint (JSearch on RapidAPI: aggregates LinkedIn, Naukri, Indeed, Glassdoor, Shine…)
 // GET /api/jobs?q=react+developer&location=Bengaluru&datePosted=today&page=1&remote=false&employmentType=FULLTIME
 
+const crypto = require("crypto");
+
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App, X-JR-Credit");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Vary", "Origin");
-  if (!origin) return true;
-  const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!origin) return false;
+  const allowed = [
+    "https://localhost",
+    "capacitor://localhost",
+    ...(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+  ];
   let ok = allowed.includes(origin);
   try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
   if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
   return ok;
+}
+
+function tokenSecret() {
+  return process.env.AI_TOKEN_SECRET || process.env.UPSTASH_REDIS_REST_TOKEN || process.env.GEMINI_API_KEY || "dev-only-token-secret";
+}
+function verifyCreditToken(token) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return false;
+  const [payload, sig] = token.split(".");
+  const expected = crypto.createHmac("sha256", tokenSecret()).update(payload).digest("base64url");
+  const a = Buffer.from(sig || "");
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  let data;
+  try { data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch (_) { return false; }
+  return data && data.tool === "jobs" && Number(data.exp) > Date.now();
 }
 
 /* ── Per-IP rate limiting (Upstash if configured, in-memory fallback) ── */
@@ -60,6 +82,7 @@ module.exports = async (req, res) => {
   if (req.method === "OPTIONS") return res.status(corsOk ? 200 : 403).end();
   if (!corsOk) return res.status(403).json({ ok: false, error: "Origin not allowed" });
   if (req.headers["x-jr-app"] !== "1") return res.status(403).json({ ok: false, error: "Forbidden" });
+  if (!verifyCreditToken(req.headers["x-jr-credit"])) return res.status(401).json({ ok: false, error: "Please search jobs from the app after credit check." });
 
   // Abuse protection: throttle per IP so bots can't drain the free JSearch quota.
   const limited = await rateLimited(ipOf(req));
