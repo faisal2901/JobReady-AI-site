@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -93,6 +93,7 @@ function track(event, extra = {}) {
 const TOOL_LABELS = { jobs: "Job Openings", analyze: "Resume Analyzer", tailor: "Tailor Resume", salary: "Salary Intel", roadmap: "Career Roadmap" };
 let pointsState = null; // last known status from server
 let creditInFlight = false; // guards against double-click double-spend
+let pointsSession = store.get("pointsSession", "");
 function localDayStr() {
   const d = new Date(); const t = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return t.toISOString().slice(0, 10);
@@ -103,13 +104,17 @@ async function pointsApi(action, extra = {}) {
     const r = await fetch("/api/points", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-JR-App": "1" },
-      body: JSON.stringify({ action, email: user.email, name: user.name, day: localDayStr(), ...extra }),
+      body: JSON.stringify({ action, email: user.email, name: user.name, day: localDayStr(), sessionToken: pointsSession, ...extra }),
     });
     return await r.json();
   } catch (_) { return null; }
 }
 function applyPointsState(s) {
   if (!s || s.upstash === false) { pointsState = s || pointsState; renderCredits(); return; }
+  if (s.sessionToken) {
+    pointsSession = s.sessionToken;
+    store.set("pointsSession", pointsSession);
+  }
   pointsState = s;
   if (Array.isArray(s.notifications)) s.notifications.forEach((n) => setTimeout(() => toast(n), 400));
   renderCredits();
