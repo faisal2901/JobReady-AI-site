@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -109,6 +109,12 @@ async function pointsApi(action, extra = {}) {
     return await r.json();
   } catch (_) { return null; }
 }
+async function ensurePointsSession() {
+  if (!user?.email) return null;
+  const s = await pointsApi("signup", { ref: "" });
+  applyPointsState(s);
+  return s;
+}
 function applyPointsState(s) {
   if (!s || s.upstash === false) { pointsState = s || pointsState; renderCredits(); return; }
   if (s.sessionToken) {
@@ -122,7 +128,11 @@ function applyPointsState(s) {
   const rv = document.getElementById("v-refer");
   if (rv && rv.classList.contains("active")) renderReferView();
 }
-async function refreshPoints() { applyPointsState(await pointsApi("status")); }
+async function refreshPoints() {
+  let s = await pointsApi("status");
+  if (s?.ok === false && /session/i.test(s.error || "")) s = await ensurePointsSession();
+  else applyPointsState(s);
+}
 
 // Gate a tool run. Returns true ONLY if a credit was genuinely consumed.
 // Prevents double-spend (in-flight lock) and never silently allows when out of credits.
@@ -131,7 +141,11 @@ async function checkCredit(tool) {
   if (creditInFlight) { toast("⏳ One moment…"); return false; } // block rapid double-clicks
   creditInFlight = true;
   try {
-    const s = await pointsApi("consume", { tool });
+    let s = await pointsApi("consume", { tool });
+    if (s?.ok === false && /session/i.test(s.error || "")) {
+      await ensurePointsSession();
+      s = await pointsApi("consume", { tool });
+    }
     // If the points service can't be reached at all, allow (don't hard-block on a network blip),
     // but this is the ONLY fail-open path and it's a true outage, not "out of credits".
     if (!s) return true;
@@ -191,7 +205,11 @@ function showOutOfCredits(tool) {
     showConfirm("🎟️", `Use a referral credit?`, `You're out of today's free ${label} credits, but you have ${bonus} referral credit${bonus > 1 ? "s" : ""} for it. Use one now?`,
       "Yes, use 1 credit", async () => {
         closeCelebrate();
-        const s = await pointsApi("consume", { tool });
+        let s = await pointsApi("consume", { tool });
+        if (s?.ok === false && /session/i.test(s.error || "")) {
+          await ensurePointsSession();
+          s = await pointsApi("consume", { tool });
+        }
         applyPointsState(s);
         if (s && s.ok) { toast(`✅ Used 1 referral credit. Tap the button again to run.`); }
       }, "No, keep it");
