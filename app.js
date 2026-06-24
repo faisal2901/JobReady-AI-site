@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -70,9 +70,11 @@ async function api(path, opts = {}, retries = 1, timeoutMs = 95000) {
   }
 }
 const TRACKED_FEATURES = new Set(["analyze", "boost", "tailor", "coverletter", "interview", "salary", "roadmap"]);
+const creditTokens = {};
 const aiCall = (action, payload, retries = 1) => {
   if (TRACKED_FEATURES.has(action)) track("feature", { feature: action });
-  return api("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) }, retries);
+  const creditToken = creditTokens[action] || creditTokens[{ boost: "analyze", coverletter: "tailor" }[action]];
+  return api("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, creditToken, ...payload }) }, retries);
 };
 
 /* ── Analytics: fire-and-forget event logging (never blocks or breaks the UI) ── */
@@ -132,6 +134,7 @@ async function checkCredit(tool) {
     if (s.softFail) return true;             // transient infra error
     applyPointsState(s);
     if (s.ok === false && s.reason === "no_credits") { showOutOfCredits(tool); return false; }
+    if (s.ok === true && s.creditToken) creditTokens[tool] = s.creditToken;
     return s.ok === true;                     // only proceed if server confirms consumption
   } finally {
     creditInFlight = false;
@@ -954,6 +957,7 @@ async function runCoverLetter() {
   if (requireLogin() || needResume()) return;
   const jd = $("tJd").value.trim();
   if (jd.length < 50) return toast("⚠️ Paste the Job Description first");
+  if (!(await checkCredit("tailor"))) return;
   busyBtn("clBtn", true);
   try {
     const { data } = await aiCall("coverletter", { resume: resumeText, jd, jobTitle: $("tJobTitle").value, company: $("tCompany").value });
@@ -989,7 +993,7 @@ async function searchJobs(page) {
     const p = new URLSearchParams({ q, location: $("jLoc").value.trim() || "India", datePosted: $("jDate").value, page: String(page) });
     if ($("jRemote").checked) p.set("remote", "true");
     if ($("jType").value) p.set("employmentType", $("jType").value);
-    const j = await api("/api/jobs?" + p, {}, 1);
+    const j = await api("/api/jobs?" + p, { headers: { "X-JR-Credit": creditTokens.jobs || "" } }, 1);
     jobsCache = page === 1 ? j.jobs : jobsCache.concat(j.jobs);
     renderJobs();
     if (j.jobs.length >= 8) $("jobsMore").innerHTML = `<button class="btn ghost" onclick="searchJobs(${page + 1})">Load more ↓</button>`;
