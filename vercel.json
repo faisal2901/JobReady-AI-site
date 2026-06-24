@@ -1,4 +1,8 @@
 {
+  "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" }
+  ],
   "functions": {
     "api/ai.js": { "maxDuration": 90 },
     "api/jobs.js": { "maxDuration": 30 },
