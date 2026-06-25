@@ -555,6 +555,9 @@ function verifyCreditToken(token, expectedTool) {
   try { data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch (_) { return false; }
   return data && data.tool === expectedTool && Number(data.exp) > Date.now();
 }
+function hashAnon(v) {
+  return crypto.createHmac("sha256", tokenSecret()).update(String(v || "")).digest("hex").slice(0, 32);
+}
 
 function ipOf(req) {
   return ((req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket?.remoteAddress || "unknown";
@@ -590,6 +593,25 @@ async function checkQuota(ip, action) {
   if (dn > DAILY_MAX) return "day";
   return null;
 }
+const memAnonAnalyze = new Set();
+async function claimAnonAnalyze(req, body) {
+  if (body.action !== "analyze" || body.anonFree !== true) return false;
+  const anonId = String(body.anonId || "").trim();
+  if (!/^[A-Za-z0-9_.:-]{16,120}$/.test(anonId)) return false;
+  const key = `jra:${hashAnon(ipOf(req) + ":" + anonId)}`;
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    try {
+      const used = await upstash(`get/${key}`);
+      if (used) return false;
+      await upstash(`set/${key}/1/ex/31536000`);
+      return true;
+    } catch (_) { /* fall through */ }
+  }
+  if (memAnonAnalyze.has(key)) return false;
+  memAnonAnalyze.add(key);
+  if (memAnonAnalyze.size > 10000) memAnonAnalyze.clear();
+  return true;
+}
 
 module.exports = async (req, res) => {
   const corsOk = applyCors(req, res);
@@ -614,7 +636,8 @@ module.exports = async (req, res) => {
     const fn = ACTIONS[body.action];
     if (!fn) return res.status(400).json({ error: `Unknown action: ${body.action}` });
     const requiredTool = CREDIT_TOOL_FOR_ACTION[body.action];
-    if (requiredTool && !verifyCreditToken(body.creditToken, requiredTool)) {
+    const anonAnalyze = requiredTool === "analyze" && await claimAnonAnalyze(req, body);
+    if (requiredTool && !anonAnalyze && !verifyCreditToken(body.creditToken, requiredTool)) {
       return res.status(401).json({ ok: false, error: "Please run this tool from the app after credit check." });
     }
     for (const k of ["jobTitle", "company", "role", "city", "skills", "currentRole", "targetRole", "timeline"]) {
