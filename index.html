@@ -697,6 +697,21 @@ body.signed-in .guest-login-card{
   color:var(--dim);
   font-size:11.5px;
 }
+.guest-login-card small{display:none}
+.dashboard-hero{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-height:288px;
+}
+.dashboard-hero p{
+  max-width:100%;
+  line-height:1.65;
+  font-size:clamp(15px,1.35vw,18px);
+}
+.dashboard-hero .hero-actions{
+  margin-top:22px;
+}
 @media(min-width:1500px){
   body.signed-out .app .main{
     margin-right:334px;
@@ -753,8 +768,40 @@ body.signed-in .guest-login-card{
   .app-footer{
     margin-top:auto;
   }
+  .app-footer{
+    gap:10px;
+  }
+  .app-footer .foot-left,.app-footer .foot-mid,.app-footer .foot-right{
+    width:100%;
+  }
+  .app-footer .foot-left{
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:10px;
+    align-items:center;
+  }
+  .app-footer .foot-mid{
+    justify-content:flex-start;
+    gap:10px;
+  }
+  .app-footer .foot-links{
+    flex:1 1 100%;
+  }
+  .app-footer .foot-right{
+    justify-content:flex-start;
+  }
+  .foot-links{
+    white-space:normal;
+  }
   .dashboard-lead{
     grid-template-columns:1fr;
+  }
+  .dashboard-hero{
+    min-height:260px;
+  }
+  .dashboard-hero p{
+    max-width:100%;
+    font-size:14px;
   }
   .guest-login-card{
     padding:18px;
@@ -887,10 +934,10 @@ body.signed-in .guest-login-card{
         </div></div>
         <button class="ann-x" onclick="dismissAnnounce()" aria-label="Dismiss">✕</button>
       </div>
-      <div class="hero" style="margin-bottom:18px">
+      <div class="hero dashboard-hero" style="margin-bottom:18px">
         <h2 id="greet">Welcome! 👋</h2>
         <p>Upload your resume once. Then analyze it, boost it to 90+, tailor it to any JD, find fresh openings, practice interviews and track every application. All free, all in one place.</p>
-        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+        <div class="hero-actions" style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn" onclick="go('analyzer')">Analyze my resume</button>
           <button class="btn ghost" onclick="go('jobs')">Find jobs posted today</button>
         </div>
@@ -1086,13 +1133,11 @@ body.signed-in .guest-login-card{
       <span>Resume ATS score and improvement plan</span>
       <span>Tailor your resume for any job description</span>
       <span>Track applications, interviews and streaks</span>
-      <span>Earn referral credits that stay saved until used</span>
     </div>
     <div class="guest-actions">
       <button class="btn" onclick="openLogin()">Sign in free</button>
       <button class="btn ghost" onclick="go('analyzer')">Try analyzer</button>
     </div>
-    <small>No payment needed. 3 free daily credits per tool.</small>
   </aside>
 </div>
 

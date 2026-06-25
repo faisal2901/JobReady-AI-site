@@ -6,7 +6,7 @@ const CONFIG = {
   // Optional: paste your Google OAuth Client ID here to enable "Sign in with Google".
   // Get one free: console.cloud.google.com, APIs & Services, Credentials, Create OAuth client ID (Web).
   // Add your site URL (https://job-ready-ai-site.vercel.app) under "Authorized JavaScript origins".
-  GOOGLE_CLIENT_ID: "746049800979-cmqsp37kni0up3tofkq2tj7q9sl54cbi.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -18,6 +18,14 @@ const store = {
   set: (k, v) => localStorage.setItem("jr_" + k, JSON.stringify(v)),
   del: (k) => localStorage.removeItem("jr_" + k),
 };
+function setCookie(name, value, days) {
+  const maxAge = Math.max(1, days || 365) * 86400;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax; Secure`;
+}
+function getCookie(name) {
+  const m = (document.cookie || "").match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : "";
+}
 let resumeText = store.get("resume", "");
 let resumeName = store.get("resumeName", "");
 let lastAnalysis = store.get("analysis", null);
@@ -464,7 +472,7 @@ function completeLogin(u) {
   track(isNew ? "signup" : "login", { email: u.email, name: u.name });
   store.set("registered_" + hashStr(u.email.toLowerCase()), true);
   calcStreak();
-  closeLogin(); renderAuth(); renderDashboard();
+  closeLogin(); renderAuth(); renderDashboard(); renderCredits(); renderReferView();
   const first = u.name.split(" ")[0];
   toast(returning
     ? `🎉 Welcome back to your JobTopper journey, ${first}! Everything is right where you left it.`
@@ -539,9 +547,14 @@ function confirmSignout() {
   clearWorkspace();
   user = null;
   resumeText = ""; resumeName = ""; lastAnalysis = null; tracker = []; ivHistory = []; ivActive = false; jobsCache = [];
+  pointsState = null; pointsSession = "";
+  Object.keys(creditTokens).forEach((k) => delete creditTokens[k]);
   closeSignout();
   reloadStateFromStorage();
   renderAuth();
+  renderCredits();
+  renderReferView();
+  renderDashboard();
   toast("👋 Signed out. Your data is locked safely on this device until you return.");
 }
 function renderAuth() {
@@ -559,6 +572,22 @@ function requireLogin() {
 }
 
 /* ── Navigation ── */
+function anonBrowserId() {
+  let id = store.get("anonId", "") || getCookie("jr_anon_id");
+  if (!id) {
+    id = (window.crypto?.randomUUID?.() || ("anon_" + Date.now() + "_" + Math.random().toString(36).slice(2)));
+    store.set("anonId", id);
+    setCookie("jr_anon_id", id, 365);
+  }
+  return id;
+}
+function anonAnalyzeUsed() {
+  return store.get("anonAnalyzeUsed", false) || getCookie("jr_anon_analyze_used") === "1";
+}
+function markAnonAnalyzeUsed() {
+  store.set("anonAnalyzeUsed", true);
+  setCookie("jr_anon_analyze_used", "1", 365);
+}
 function hasCookieConsent() {
   return store.get("cookieConsent", false) || /(?:^|;\s*)jr_cookie_consent=accepted\b/.test(document.cookie || "");
 }
@@ -714,7 +743,14 @@ function scoreCacheKey(text, jd) {
   return "score_" + hashStr(text.replace(/\s+/g, " ").trim() + "||" + (jd || "").replace(/\s+/g, " ").trim());
 }
 async function runAnalyze(force) {
-  if (requireLogin() || needResume()) return;
+  const guestRun = !user?.email;
+  if (guestRun && anonAnalyzeUsed()) {
+    openLogin();
+    toast("Your free analyzer try is used. Sign in free to continue.");
+    return;
+  }
+  if (!guestRun && requireLogin()) return;
+  if (needResume()) return;
   const jd = $("analyzeJd").value.trim();
   const cacheKey = scoreCacheKey(resumeText, jd);
   const cached = store.get(cacheKey, null);
@@ -724,7 +760,7 @@ async function runAnalyze(force) {
     toast("🔒 Same resume and JD, so here is your locked score. Edit the text to re-score.");
     return;
   }
-  if (!(await checkCredit("analyze"))) return;
+  if (!guestRun && !(await checkCredit("analyze"))) return;
   busyBtn("analyzeBtn", true);
   $("analyzeOut").innerHTML = loadBox([
     "☕ Grab a chai while our AI reads every single word…",
@@ -733,7 +769,17 @@ async function runAnalyze(force) {
     "📊 Calculating your locked ATS score…",
   ]);
   try {
-    const { data } = await aiCall("analyze", { resume: resumeText, jd: jd || undefined });
+    const { data } = guestRun
+      ? await api("/api/ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "analyze", resume: resumeText, jd: jd || undefined, anonFree: true, anonId: anonBrowserId() }),
+        }, 0)
+      : await aiCall("analyze", { resume: resumeText, jd: jd || undefined });
+    if (guestRun) {
+      markAnonAnalyzeUsed();
+      toast("Free analyzer used. Sign in free to save credits and keep improving.");
+    }
     lastAnalysis = data; store.set("analysis", data); store.set(cacheKey, data);
     renderAnalysis(data, cacheKey);
   } catch (e) { $("analyzeOut").innerHTML = errBox(e, "runAnalyze(true)"); }
