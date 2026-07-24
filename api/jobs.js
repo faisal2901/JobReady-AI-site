@@ -10,10 +10,18 @@ function applyCors(req, res) {
   res.setHeader("Vary", "Origin");
   if (!origin) return false;
   const allowed = [
-    "https://localhost",
-    "capacitor://localhost",
-    ...(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
-  ];
+  "http://localhost:3000",
+  "capacitor://localhost",
+  "https://jobtopper.vercel.app",
+  ...(process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim().replace(/\/$/, ""))
+    .filter(Boolean),
+];
+
+const normalizedOrigin = origin.replace(/\/$/, "");
+
+let ok = allowed.includes(normalizedOrigin);
   let ok = allowed.includes(origin);
   try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
   if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
