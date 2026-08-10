@@ -135,6 +135,11 @@ function applyPointsState(s) {
   // keep the Refer page live if it's currently open
   const rv = document.getElementById("v-refer");
   if (rv && rv.classList.contains("active")) renderReferView();
+  // ...and keep the Refer popup live too, so a code/link that was still "Generating…"
+  // when the popup opened gets filled in as soon as it arrives, instead of staying stale.
+  const rm = document.getElementById("referModal");
+  const rb = document.getElementById("referBody");
+  if (rm && rb && rm.classList.contains("show")) rb.innerHTML = referContentHTML();
 }
 async function refreshPoints() {
   let s = await pointsApi("status");
@@ -306,10 +311,10 @@ function referContentHTML() {
   return `
     <p style="color:var(--mut);font-size:13.5px">Share your link or code. When a friend signs up, <b style="color:var(--good)">+3 referral credits are added to every tool</b> and they stay saved until used. Your friend gets +2 referral credits per tool for joining.</p>
     <div class="refer-codebox"><span>Your referral code: <b style="color:var(--good)">${esc(code || "Loading...")}</b></span><button class="btn sm ghost" onclick="navigator.clipboard.writeText('${esc(code)}');toast('Code copied!')" ${code ? "" : "disabled"}>Copy code</button></div>
-    <div class="refer-codebox"><span>${esc(link)}</span><button class="btn sm" onclick="navigator.clipboard.writeText('${esc(link)}');toast('Link copied!')">Copy link</button></div>
+    <div class="refer-codebox"><span>${code ? esc(link) : "Generating your link…"}</span><button class="btn sm" onclick="navigator.clipboard.writeText('${esc(link)}');toast('Link copied!')" ${code ? "" : "disabled"}>Copy link</button></div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-      <button class="btn sm good" onclick="shareReferral('whatsapp')">💬 WhatsApp</button>
-      <button class="btn sm ghost" onclick="shareReferral('any')">🔗 Share</button>
+      <button class="btn sm good" onclick="shareReferral('whatsapp')" ${code ? "" : "disabled"}>💬 WhatsApp</button>
+      <button class="btn sm ghost" onclick="shareReferral('any')" ${code ? "" : "disabled"}>🔗 Share</button>
     </div>
     <div class="refer-stats">
       <div><b>${count}</b><span>Friends referred</span></div>
@@ -472,7 +477,12 @@ function completeLogin(u) {
   track(isNew ? "signup" : "login", { email: u.email, name: u.name });
   store.set("registered_" + hashStr(u.email.toLowerCase()), true);
   calcStreak();
-  closeLogin(); renderAuth(); renderDashboard(); renderCredits(); renderReferView();
+  closeLogin(); renderAuth(); renderDashboard(); renderCredits();
+  // Don't call renderReferView() yet for a brand-new user pending the welcome modal below —
+  // it triggers a background /api/points "signup" call (with no ref) via refreshPoints(),
+  // which would register this user BEFORE they submit their real referral code, silently
+  // voiding the referral bonus for both sides. Safe to render once they're not mid-signup.
+  if (!(isNew && !returning)) renderReferView();
   const first = u.name.split(" ")[0];
   toast(returning
     ? `🎉 Welcome back to your JobTopper journey, ${first}! Everything is right where you left it.`
