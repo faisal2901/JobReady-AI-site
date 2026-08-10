@@ -98,6 +98,18 @@ select{background:#0e0e20;border:1px solid var(--border);border-radius:9px;color
     </div>
   </div>
 
+  <div class="panel">
+    <h3>🎁 Grant bonus credits to all users</h3>
+    <p class="muted" style="margin-bottom:12px">Adds bonus credits (they carry over, same as referral bonuses) to every registered user at once — e.g. to compensate everyone after a bug that spent a credit on a failed run.</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <label class="muted">Amount per tool:</label>
+      <input type="number" id="grantAmount" value="3" min="1" max="50" style="width:70px" />
+      <span class="muted" id="grantToolsLabel">Tools: jobs, analyze, tailor, salary, roadmap (all)</span>
+    </div>
+    <button class="btn" onclick="grantAll()">🎁 Grant to all users</button>
+    <div id="grantMsg" style="margin-top:10px;font-size:13.5px"></div>
+  </div>
+
   <p class="muted">Tip: bookmark this page. Data is collected only when Upstash Redis is connected in Vercel.</p>
 </div>
 
@@ -180,6 +192,27 @@ function render(j) {
   document.querySelector("#usersTbl tbody").innerHTML = users.map((u) =>
     `<tr><td>${esc(u.name||"—")}</td><td>${esc(u.email)}</td><td>${esc(u.signedUp||u.firstSeen||"—")}</td><td>${esc(u.lastLogin||"—")}</td><td class="num">${u.logins||0}</td></tr>`
   ).join("") || '<tr><td colspan="5" class="muted">No users yet.</td></tr>';
+}
+
+async function grantAll() {
+  const amount = parseInt(document.getElementById("grantAmount").value, 10) || 3;
+  const msg = document.getElementById("grantMsg");
+  if (!confirm(`Grant +${amount} bonus credits (per tool) to every registered user? This can't be undone.`)) return;
+  msg.textContent = "Granting…"; msg.style.color = "var(--mut)";
+  try {
+    const r = await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": TOKEN },
+      body: JSON.stringify({ action: "grant_credits_all", amount }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || ("Error " + r.status));
+    msg.textContent = `✅ Granted +${j.amount} credits per tool to ${j.granted} user${j.granted === 1 ? "" : "s"}.`;
+    msg.style.color = "var(--good)";
+  } catch (e) {
+    msg.textContent = "❌ " + e.message;
+    msg.style.color = "var(--bad)";
+  }
 }
 
 function exportUsers() {

@@ -172,6 +172,20 @@ async function checkCredit(tool) {
     creditInFlight = false;
   }
 }
+// If a tool run fails AFTER its credit was already spent (network blip, API outage, timeout),
+// give the credit back instead of charging the user for a run that produced nothing.
+async function refundCredit(tool) {
+  const creditToken = creditTokens[tool];
+  if (!creditToken || !user?.email) return;
+  delete creditTokens[tool]; // one-shot: don't leave a stale token around to be reused
+  try {
+    const s = await pointsApi("refund", { tool, creditToken });
+    if (s?.ok) {
+      applyPointsState(s);
+      if (s.refunded) toast("💳 That didn't work out, so we've given your credit back.");
+    }
+  } catch (_) { /* best-effort — never let a refund attempt itself surface a second error */ }
+}
 function referralLink() {
   const code = pointsState?.code || "";
   return location.origin + "/?ref=" + code;
@@ -792,7 +806,7 @@ async function runAnalyze(force) {
     }
     lastAnalysis = data; store.set("analysis", data); store.set(cacheKey, data);
     renderAnalysis(data, cacheKey);
-  } catch (e) { $("analyzeOut").innerHTML = errBox(e, "runAnalyze(true)"); }
+  } catch (e) { $("analyzeOut").innerHTML = errBox(e, "runAnalyze(true)"); refundCredit("analyze"); }
   busyBtn("analyzeBtn", false, "🔍 Analyze Resume & Get ATS Score");
 }
 function clearScoreCache(key) { store.del(key); runAnalyze(true); }
@@ -1029,7 +1043,7 @@ async function runTailor() {
       <div class="card"><h3>📝 What changed</h3><ul style="margin:10px 0 0 18px;color:var(--mut);font-size:13.5px">${(data.changes || []).map((c) => `<li style="margin-bottom:6px">${esc(c)}</li>`).join("")}</ul></div>
       <div class="card"><h3>🔑 Keywords woven in</h3><div style="margin-top:10px">${(data.keywordsAdded || []).map((k) => `<span class="chip hit">${esc(k)}</span>`).join("")}</div></div>
     </div>`;
-  } catch (e) { $("tailorOut").innerHTML = errBox(e, "runTailor()"); }
+  } catch (e) { $("tailorOut").innerHTML = errBox(e, "runTailor()"); refundCredit("tailor"); }
   busyBtn("tailorBtn", false, "✂️ Tailor My Resume");
 }
 async function runCoverLetter() {
@@ -1044,7 +1058,7 @@ async function runCoverLetter() {
       `<div class="card" style="margin-bottom:16px"><h3>✉️ Cover Letter</h3>
       <div style="margin:10px 0"><button class="btn sm ghost" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.textContent);toast('Copied!')">📋 Copy</button></div>
       <pre class="resume-out">${esc(data.coverLetter)}</pre></div>`);
-  } catch (e) { toast("❌ " + e.message); }
+  } catch (e) { toast("❌ " + e.message); refundCredit("tailor"); }
   busyBtn("clBtn", false, "✉️ Generate Cover Letter");
 }
 
@@ -1084,7 +1098,7 @@ async function searchJobs(page) {
     renderJobs();
     if (j.jobs.length >= 8) $("jobsMore").innerHTML = `<button class="btn ghost" onclick="searchJobs(${page + 1})">Load more ↓</button>`;
     if (!j.jobs.length && page === 1) $("jobsOut").innerHTML = `<div class="card" style="text-align:center;color:var(--mut)">No fresh listings found. Try "Last 3 days", a broader keyword, or leave city blank for all India.</div>`;
-  } catch (e) { $("jobsOut").innerHTML = errBox(e, "searchJobs(1)"); }
+  } catch (e) { $("jobsOut").innerHTML = errBox(e, "searchJobs(1)"); if (page === 1) refundCredit("jobs"); }
   busyBtn("jobsBtn", false, "💼 Search Fresh Openings");
 }
 function fmtSalary(j) {
@@ -1258,7 +1272,7 @@ async function runSalary(force) {
     const { data: d } = await aiCall("salary", { role, city: $("sCity").value, years: $("sYears").value, skills: $("sSkills").value });
     store.set(key, d);
     renderSalary(role, d, key);
-  } catch (e) { $("salaryOut").innerHTML = errBox(e, "runSalary()"); }
+  } catch (e) { $("salaryOut").innerHTML = errBox(e, "runSalary()"); refundCredit("salary"); }
   busyBtn("salaryBtn", false, "💰 Get Salary Intelligence");
 }
 function clearSalCache(key) { store.del(key); runSalary(true); }
@@ -1305,7 +1319,7 @@ async function runRoadmap(force) {
     const { data: d } = await aiCall("roadmap", { resume: resumeText || undefined, currentRole: $("rCurrent").value, targetRole: target, timeline: $("rTimeline").value });
     store.set(key, d);
     renderRoadmap(d, key);
-  } catch (e) { $("roadmapOut").innerHTML = errBox(e, "runRoadmap()"); }
+  } catch (e) { $("roadmapOut").innerHTML = errBox(e, "runRoadmap()"); refundCredit("roadmap"); }
   busyBtn("roadmapBtn", false, "🗺️ Build My Roadmap");
 }
 function clearRmCache(key) { store.del(key); runRoadmap(true); }
