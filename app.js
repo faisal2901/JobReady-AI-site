@@ -1043,11 +1043,9 @@ async function searchJobs(page) {
   if (requireLogin()) return;
   const q = $("jQ").value.trim();
   if (!q) return toast("⚠️ Enter a role or keywords");
-  // Only a brand-new search costs a credit; "Load more" pagination is free.
-  if (page === 1) {
-    if (!(await checkCredit("jobs"))) return;
-    track("feature", { feature: "jobs" });
-  }
+  // Show the button + loading card the instant you click — before the (async) credit
+  // check even starts. This also disables the button immediately, so a fast second
+  // click can't sneak in and hit the "one moment" double-click guard below.
   busyBtn("jobsBtn", true);
   if (page === 1) {
     $("jobsOut").innerHTML = loadBox([
@@ -1058,6 +1056,15 @@ async function searchJobs(page) {
     jobsCache = [];
   }
   $("jobsMore").innerHTML = "";
+  // Only a brand-new search costs a credit; "Load more" pagination is free.
+  if (page === 1) {
+    if (!(await checkCredit("jobs"))) {
+      $("jobsOut").innerHTML = "";
+      busyBtn("jobsBtn", false, "💼 Search Fresh Openings");
+      return;
+    }
+    track("feature", { feature: "jobs" });
+  }
   try {
     const p = new URLSearchParams({ q, location: $("jLoc").value.trim() || "India", datePosted: $("jDate").value, page: String(page) });
     if ($("jRemote").checked) p.set("remote", "true");
