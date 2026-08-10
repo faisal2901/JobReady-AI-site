@@ -114,7 +114,7 @@ async function load() {
   const days = document.getElementById("range") ? document.getElementById("range").value : 30;
   document.getElementById("gateErr").textContent = "";
   try {
-    const r = await fetch("/api/admin?token=" + encodeURIComponent(tok) + "&days=" + days);
+    const r = await fetch("/api/admin?days=" + days, { headers: { "X-Admin-Token": tok } });
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.error || ("Error " + r.status));
     TOKEN = tok; sessionStorage.setItem("jr_admin_tok", tok);
