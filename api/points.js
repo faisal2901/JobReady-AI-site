@@ -48,7 +48,7 @@ const mem = new Map();
 async function tooFast(ip) {
   const MAX = 100;
   if (HAS_UPSTASH) {
-    try { const k = `jpm:${ip}:${Math.floor(Date.now() / 60000)}`; const m = await redis(["INCR", k]); if (m === 1) await redis(["EXPIRE", k, "70"]); return m > MAX; } catch (_) {}
+    try { const k = `jpm:${ip}:${Math.floor(Date.now() / 60000)}`; const m = await redis(["INCR", k]); if (m === 1) redis(["EXPIRE", k, "70"]).catch(() => {}); return m > MAX; } catch (_) {}
   }
   const now = Date.now(); const r = (mem.get(ip) || []).filter((t) => now - t < 60000); r.push(now); mem.set(ip, r); if (mem.size > 5000) mem.clear(); return r.length > MAX;
 }
@@ -91,21 +91,32 @@ const useKey = (uid, tool, day) => `jp:use:${uid}:${tool}:${day}`;
 const bonusKey = (uid, tool) => `jp:bonus:${uid}:${tool}`;
 
 async function toolStatus(uid, tool, day) {
-  const used = await getNum(useKey(uid, tool, day));
-  const bonus = await getNum(bonusKey(uid, tool));
+  // These two reads don't depend on each other — fire them together instead of
+  // waiting on one round trip before starting the next (cuts this in half).
+  const [used, bonus] = await Promise.all([getNum(useKey(uid, tool, day)), getNum(bonusKey(uid, tool))]);
   const daily = Math.max(0, DAILY_LIMIT - used);
   return { daily, bonus, remaining: daily + bonus, limit: DAILY_LIMIT };
 }
 async function fullStatus(uid, day) {
+  // Every branch below is independent of the others, so run them concurrently.
+  // Previously this was ~15 sequential Redis round trips (5 tools × 2 keys, plus
+  // code/referrals/reflist/notifs) — that serial chain was the main reason the
+  // "checking your credits" step before a job search felt slow. Same reads, same
+  // results, just fired in parallel.
+  const [toolsArr, code, referrals, refListRaw, notifsRaw] = await Promise.all([
+    Promise.all(TOOLS.map((t) => toolStatus(uid, t, day))),
+    ensureCode(uid),
+    getNum(`jp:refcount:${uid}`),
+    redis(["GET", `jp:reflist:${uid}`]).catch(() => null),
+    redis(["GET", `jp:notif:${uid}`]).catch(() => null),
+  ]);
   const tools = {};
-  for (const t of TOOLS) tools[t] = await toolStatus(uid, t, day);
-  const code = await ensureCode(uid);
-  const referrals = await getNum(`jp:refcount:${uid}`);
+  TOOLS.forEach((t, i) => { tools[t] = toolsArr[i]; });
   let refList = [];
-  try { const raw = await redis(["GET", `jp:reflist:${uid}`]); if (raw) refList = JSON.parse(raw); } catch (_) {}
+  try { if (refListRaw) refList = JSON.parse(refListRaw); } catch (_) {}
   let notifs = [];
-  try { const raw = await redis(["GET", `jp:notif:${uid}`]); if (raw) notifs = JSON.parse(raw); } catch (_) {}
-  if (notifs.length) await redis(["DEL", `jp:notif:${uid}`]);
+  try { if (notifsRaw) notifs = JSON.parse(notifsRaw); } catch (_) {}
+  if (notifs.length) redis(["DEL", `jp:notif:${uid}`]).catch(() => {}); // housekeeping only, doesn't need to block the response
   return { ok: true, upstash: true, tools, code, referrals, referralList: refList, notifications: notifs, limit: DAILY_LIMIT, referralCreditsCarryOver: true, dailyCreditsCarryOver: false };
 }
 async function pushNotif(uid, msg) {
@@ -216,7 +227,7 @@ module.exports = async (req, res) => {
       if (st.daily > 0) {
         const k = useKey(uid, tool, day);
         const n = await redis(["INCR", k]);
-        if (n === 1) await redis(["EXPIRE", k, String(48 * 3600)]); // auto-clean after 2 days
+        if (n === 1) redis(["EXPIRE", k, String(48 * 3600)]).catch(() => {}); // auto-clean after 2 days; housekeeping only, doesn't need to block the response
       } else {
         await redis(["DECR", bonusKey(uid, tool)]);
       }
