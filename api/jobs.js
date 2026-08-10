@@ -22,7 +22,6 @@ function applyCors(req, res) {
 const normalizedOrigin = origin.replace(/\/$/, "");
 
 let ok = allowed.includes(normalizedOrigin);
-  let ok = allowed.includes(origin);
   try { if (new URL(origin).host === req.headers.host) ok = true; } catch (_) {}
   if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
   return ok;
