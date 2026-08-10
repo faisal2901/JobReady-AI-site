@@ -59,12 +59,13 @@ async function rateLimited(ip) {
   if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
     try {
       const mKey = `jbm:${ip}:${Math.floor(Date.now() / 60000)}`;
-      const m = await upstash(`incr/${mKey}`);
-      if (m === 1) await upstash(`expire/${mKey}/70`);
-      if (m > JOBS_PER_MINUTE) return "minute";
       const dKey = `jbd:${ip}:${day}`;
-      const d = await upstash(`incr/${dKey}`);
-      if (d === 1) await upstash(`expire/${dKey}/90000`);
+      // The minute and day counters are independent — increment both at once
+      // instead of waiting on one Upstash round trip before starting the next.
+      const [m, d] = await Promise.all([upstash(`incr/${mKey}`), upstash(`incr/${dKey}`)]);
+      if (m === 1) upstash(`expire/${mKey}/70`).catch(() => {});   // housekeeping only, doesn't need to block the response
+      if (d === 1) upstash(`expire/${dKey}/90000`).catch(() => {});
+      if (m > JOBS_PER_MINUTE) return "minute";
       if (d > JOBS_PER_DAY) return "day";
       return null;
     } catch (_) { /* fall through to memory */ }
