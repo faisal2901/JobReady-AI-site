@@ -8,7 +8,15 @@ function applyCors(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-JR-App, X-JR-Credit");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Vary", "Origin");
-  if (!origin) return false;
+  // A missing Origin header does NOT mean the request is cross-site. Per the Fetch
+  // spec, browsers only attach Origin for cross-origin requests, or same-origin
+  // requests using an unsafe method (POST/PUT/DELETE...). This endpoint is GET, so
+  // a normal same-origin fetch() call from this very site legitimately has NO
+  // Origin header — that was being rejected as "Origin not allowed" on every single
+  // real request. A genuine cross-site attempt via JS always gets Origin attached
+  // by the browser, so the allowlist check below still guards against that; only a
+  // present-but-mismatched Origin should be blocked.
+  if (!origin) return true;
   const allowed = [
   "http://localhost:3000",
   "capacitor://localhost",
