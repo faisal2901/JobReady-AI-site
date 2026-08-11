@@ -30,6 +30,9 @@ function lastNDays(n) {
   }
   return out.reverse();
 }
+// Same 5 tools /api/points tracks credits for.
+const TOOLS = ["jobs", "analyze", "tailor", "salary", "roadmap"];
+const bonusKey = (uid, tool) => `jp:bonus:${uid}:${tool}`;
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -44,6 +47,30 @@ module.exports = async (req, res) => {
   }
   if (!HAS_UPSTASH) {
     return res.status(200).json({ ok: true, upstash: false, message: "Connect Upstash Redis to start collecting analytics. No data yet." });
+  }
+
+  // POST: one-off admin actions. Currently just "grant_credits_all" — used to compensate
+  // every existing user (e.g. after a bug that let a failed run still spend a credit).
+  if (req.method === "POST") {
+    let body = req.body;
+    if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+    body = body || {};
+    if (body.action !== "grant_credits_all") {
+      return res.status(400).json({ ok: false, error: "unknown action" });
+    }
+    try {
+      const amount = Math.max(1, Math.min(50, parseInt(body.amount, 10) || 3));
+      const tools = Array.isArray(body.tools) && body.tools.length ? body.tools.filter((t) => TOOLS.includes(t)) : TOOLS;
+      if (!tools.length) return res.status(400).json({ ok: false, error: "no valid tools given" });
+      const uidsRaw = await redis(["HKEYS", "users"]).catch(() => []);
+      const uids = Array.isArray(uidsRaw) ? uidsRaw : [];
+      for (const uid of uids) {
+        await Promise.all(tools.map((t) => redis(["INCRBY", bonusKey(uid, t), String(amount)])));
+      }
+      return res.status(200).json({ ok: true, granted: uids.length, amount, tools });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
   }
 
   const days = Math.min(90, Math.max(1, parseInt((req.query && req.query.days), 10) || 30));
