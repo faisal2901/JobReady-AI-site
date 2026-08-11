@@ -129,10 +129,21 @@ function tokenSecret() {
   return process.env.AI_TOKEN_SECRET || UPSTASH_TOKEN || process.env.GEMINI_API_KEY || "dev-only-token-secret";
 }
 function b64url(s) { return Buffer.from(s).toString("base64url"); }
-function signCreditToken(uid, tool) {
-  const payload = b64url(JSON.stringify({ uid, tool, exp: Date.now() + 5 * 60 * 1000 }));
+// kind ("daily" | "bonus") + day are embedded so a later refund can reverse the exact
+// thing that was decremented, without the client having to know or report which it was.
+function signCreditToken(uid, tool, kind, day) {
+  const payload = b64url(JSON.stringify({ uid, tool, kind, day, exp: Date.now() + 5 * 60 * 1000 }));
   const sig = crypto.createHmac("sha256", tokenSecret()).update(payload).digest("base64url");
   return `${payload}.${sig}`;
+}
+// Verifies a token this server signed and returns its payload, or null if invalid/tampered.
+function decodeCreditToken(token) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return null;
+  const [payload, sig] = token.split(".");
+  const expected = crypto.createHmac("sha256", tokenSecret()).update(payload).digest("base64url");
+  const a = Buffer.from(sig || ""), b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try { return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch (_) { return null; }
 }
 function hashSession(token) {
   return crypto.createHmac("sha256", tokenSecret()).update(String(token || "")).digest("hex");
@@ -168,7 +179,7 @@ module.exports = async (req, res) => {
   const email = (body.email || "").trim().toLowerCase();
   const action = String(body.action || "");
   const sessionToken = String(body.sessionToken || "").trim();
-  if (!["status", "signup", "consume"].includes(action)) return res.status(400).json({ ok: false, error: "unknown action" });
+  if (!["status", "signup", "consume", "refund"].includes(action)) return res.status(400).json({ ok: false, error: "unknown action" });
   const day = validDay(body.day) ? body.day : new Date().toISOString().slice(0, 10);
   if (!email || !/^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$/.test(email)) return res.status(400).json({ ok: false, error: "valid email required" });
 
@@ -224,15 +235,50 @@ module.exports = async (req, res) => {
         return res.status(200).json({ ...full, ok: false, reason: "no_credits", tool });
       }
       // Spend the day's free credits first; only then dip into referral bonus.
+      // Remember which one, so a failed run can be refunded precisely (see "refund" below).
+      let kind;
       if (st.daily > 0) {
+        kind = "daily";
         const k = useKey(uid, tool, day);
         const n = await redis(["INCR", k]);
         if (n === 1) redis(["EXPIRE", k, String(48 * 3600)]).catch(() => {}); // auto-clean after 2 days; housekeeping only, doesn't need to block the response
       } else {
+        kind = "bonus";
         await redis(["DECR", bonusKey(uid, tool)]);
       }
       const full = await fullStatus(uid, day);
-      return res.status(200).json({ ...full, ok: true, tool, creditToken: signCreditToken(uid, tool) });
+      return res.status(200).json({ ...full, ok: true, tool, creditToken: signCreditToken(uid, tool, kind, day) });
+    }
+
+    if (action === "refund") {
+      // Called by the client when a tool run fails AFTER its credit was already spent —
+      // gives the credit back instead of charging the user for a run that produced nothing.
+      if (!(await hasSession(uid, sessionToken))) return res.status(401).json({ ok: false, error: "Login session required" });
+      const tool = String(body.tool || "");
+      if (!TOOLS.includes(tool)) return res.status(400).json({ ok: false, error: "unknown tool" });
+      const parsed = decodeCreditToken(String(body.creditToken || ""));
+      if (!parsed || parsed.uid !== uid || parsed.tool !== tool) {
+        // No valid token = nothing we can prove was spent; report success with no changes
+        // rather than an error, so the client's error-handling path never itself breaks.
+        return res.status(200).json({ ...(await fullStatus(uid, day)), ok: true, refunded: false, tool });
+      }
+      // Idempotency: the same credit token can only ever be refunded once, even if the
+      // client's error handling fires the refund call more than once.
+      const marker = `jp:refunded:${crypto.createHash("sha256").update(String(body.creditToken)).digest("hex").slice(0, 32)}`;
+      const already = await redis(["GET", marker]);
+      if (!already) {
+        await redis(["SET", marker, "1"]);
+        redis(["EXPIRE", marker, "1200"]).catch(() => {}); // only needs to outlive the token's own 5-min lifetime
+        if (parsed.kind === "bonus") {
+          await redis(["INCRBY", bonusKey(uid, tool), "1"]);
+        } else {
+          const k = useKey(uid, tool, parsed.day || day);
+          const cur = await getNum(k);
+          if (cur > 0) await redis(["DECR", k]); // never go below 0
+        }
+      }
+      const full = await fullStatus(uid, day);
+      return res.status(200).json({ ...full, ok: true, refunded: !already, tool });
     }
 
     return res.status(400).json({ ok: false, error: "unknown action" });
